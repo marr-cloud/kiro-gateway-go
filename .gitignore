@@ -1,0 +1,28 @@
+# Binarios compilados
+/kiro-gateway
+/kiro-gateway.exe
+/dist/
+/bin/
+
+# Credenciales y estado en tiempo de ejecución: nunca se versionan
+.env
+credentials.json
+state.json
+debug_logs/
+
+# Entorno del generador de corpus
+tools/corpus/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Cobertura y perfiles de Go
+*.out
+*.test
+coverage.html
+
+# Herramientas locales
+.kiro/
+.idea/
+.vscode/
+.DS_Store
