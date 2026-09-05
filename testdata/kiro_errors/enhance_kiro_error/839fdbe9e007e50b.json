@@ -1,0 +1,1 @@
+{"target": "kiro.kiro_errors:enhance_kiro_error", "kind": "function", "input": {"args": [{"message": null, "reason": null}], "kwargs": {}}, "output": {"reason": "UNKNOWN", "user_message": "Unknown error", "original_message": "Unknown error"}, "recorded_at_commit": "a5292ca"}

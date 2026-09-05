@@ -1,0 +1,17 @@
+# Normalizacion por defecto: todos los ficheros de texto con LF
+* text=auto eol=lf
+*.md text eol=lf
+*.mod text eol=lf
+*.toml text eol=lf
+*.lock text eol=lf
+
+# El corpus se compara byte a byte: los saltos de linea nunca se convierten
+testdata/** text eol=lf
+*.json text eol=lf
+*.go text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+Taskfile.yml text eol=lf
+
+# El corpus es generado: no ensucia los diffs de las revisiones
+testdata/** linguist-generated=true

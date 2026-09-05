@@ -1,0 +1,30 @@
+kiro-gateway-go
+Copyright (C) 2026 marr-cloud
+
+Este programa es un port al lenguaje Go de kiro-gateway:
+
+    https://github.com/jwadow/kiro-gateway
+    Copyright (C) jwadow y colaboradores
+    Versión de origen: 2.4.dev.13, commit a5292ca
+
+kiro-gateway se distribuye bajo la GNU Affero General Public License v3.0.
+Este port es obra derivada y se distribuye bajo la misma licencia.
+
+Cambios respecto al original
+----------------------------
+
+- Reimplementación completa en Go como binario único sin dependencias de
+  runtime. El original es Python con FastAPI y uvicorn.
+- No se exponen los endpoints /docs, /redoc ni /openapi.json que FastAPI
+  genera automáticamente.
+- Los endpoints GET / y GET /health devuelven un JSON con campos adicionales:
+  cuenta activa, tiempo en marcha y modo de operación.
+- Las respuestas de error 422 conservan la estructura del original pero no la
+  forma literal que produce Pydantic v2.
+- Se añade el flag --health, que consulta /health y sale con código 0 o 1. El
+  healthcheck de la imagen Docker lo usa, porque la imagen no contiene ni
+  Python ni curl.
+- La imagen Docker parte de una base mínima en lugar de python:3.10-slim.
+- Documentación en inglés y español. El original la tiene en siete idiomas.
+
+La lista completa y actualizada está en docs/DIFFERENCES.md.

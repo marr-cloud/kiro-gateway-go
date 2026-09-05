@@ -1,0 +1,1 @@
+{"target": "kiro.payload_guards:check_payload_size", "kind": "function", "input": {"args": [{"emoji": "😀", "chinese": "你好"}], "kwargs": {}}, "output": 49, "recorded_at_commit": "a5292ca"}

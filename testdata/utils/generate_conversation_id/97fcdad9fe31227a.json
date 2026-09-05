@@ -1,0 +1,1 @@
+{"target": "kiro.utils:generate_conversation_id", "kind": "function", "input": {"args": [], "kwargs": {}}, "output": "00000001-0000-4000-8000-000000000001", "recorded_at_commit": "a5292ca"}

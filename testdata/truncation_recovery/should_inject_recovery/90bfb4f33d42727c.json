@@ -1,0 +1,1 @@
+{"target": "kiro.truncation_recovery:should_inject_recovery", "kind": "function", "input": {"args": [], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": false}}, "output": false, "recorded_at_commit": "a5292ca"}

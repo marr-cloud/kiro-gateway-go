@@ -1,0 +1,1 @@
+{"target": "kiro.parsers:parse_bracket_tool_calls", "kind": "function", "input": {"args": ["[Called get_weather with args: {\"location\": \"Moscow\"}]"], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": true}}, "output": [{"id": "call_00000001", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\": \"Moscow\"}"}}], "recorded_at_commit": "a5292ca"}

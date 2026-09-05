@@ -1,0 +1,1 @@
+{"target": "kiro.model_resolver:normalize_model_name", "kind": "function", "input": {"args": ["claude-sonnet-4.5"], "kwargs": {}}, "output": "claude-sonnet-4.5", "recorded_at_commit": "a5292ca"}

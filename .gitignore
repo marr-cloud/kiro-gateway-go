@@ -1,6 +1,6 @@
 # Binarios compilados
 /kiro-gateway
-/kiro-gateway.exe
+/kiro-gateway*.exe
 /dist/
 /bin/
 
@@ -26,3 +26,12 @@ coverage.html
 .idea/
 .vscode/
 .DS_Store
+
+# Artefactos de la ejecucion con subagentes (ledger, briefs, informes)
+/.superpowers/
+
+# Clon del upstream para generar el corpus
+/.upstream/
+
+# Copia temporal de la comprobacion de determinismo
+/.corpus-check/

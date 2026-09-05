@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tools_tokens", "kind": "function", "input": {"args": [[{"type": "function", "function": {"name": "no_params_func", "description": "A function without parameters"}}]], "kwargs": {}}, "output": 12, "recorded_at_commit": "a5292ca"}

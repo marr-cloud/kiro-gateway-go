@@ -66,7 +66,7 @@ Ficheros que crea esta fase, con su responsabilidad.
 
 ---
 
-### Tarea 1: Módulo Go, paquete de versión y binario mínimo
+### Task 1 — Módulo Go, paquete de versión y binario mínimo
 
 **Ficheros:**
 - Crear: `go.mod`
@@ -221,7 +221,7 @@ git commit -m "feat: add Go module, version package and minimal entry point"
 
 ---
 
-### Tarea 2: Taskfile
+### Task 2 — Taskfile
 
 **Ficheros:**
 - Crear: `Taskfile.yml`
@@ -314,7 +314,7 @@ git commit -m "chore: add Taskfile with build, test and lint targets"
 
 ---
 
-### Tarea 3: Licencia, atribución y cabecera de ficheros
+### Task 3 — Licencia, atribución y cabecera de ficheros
 
 **Ficheros:**
 - Crear: `LICENSE`
@@ -428,7 +428,7 @@ git commit -m "docs: add AGPL-3.0 license, upstream attribution and README skele
 
 ---
 
-### Tarea 4: Documentos de correspondencia y de diferencias
+### Task 4 — Documentos de correspondencia y de diferencias
 
 **Ficheros:**
 - Crear: `docs/MAPPING.md`
@@ -501,10 +501,20 @@ con las cinco filas de la tabla §4.2 del spec, para que nadie los «arregle» p
 
 - [ ] **Paso 3: Verificar la correspondencia**
 
-Ejecutar para comprobar que MAPPING.md cubre los 32 ficheros Python:
+Contar las filas de la tabla principal. El recuento debe acotarse a esa tabla: `exceptions.py`
+aparece también en la tabla de renombrados, y un patrón sin acotar devuelve 33.
+
 ```bash
-grep -c '^| `[a-z_]*\.py` |' docs/MAPPING.md
+awk '/^## Paquetes que no existen/{exit} /^\| `[a-z_]*\.py` \|/{n++} END{print n}' docs/MAPPING.md
 ```
+
+Equivalente en PowerShell:
+
+```powershell
+$hasta = (Select-String -Path docs\MAPPING.md -Pattern '^## Paquetes que no existen').LineNumber
+(Select-String -Path docs\MAPPING.md -Pattern '^\| `[a-z_]*\.py` \|' | Where-Object { $_.LineNumber -lt $hasta }).Count
+```
+
 Esperado: `32`.
 
 - [ ] **Paso 4: Commit**
@@ -516,7 +526,7 @@ git commit -m "docs: add Python-to-Go module mapping and known differences"
 
 ---
 
-### Tarea 5: Integración continua
+### Task 5 — Integración continua
 
 **Ficheros:**
 - Crear: `.github/workflows/ci.yml`
@@ -605,7 +615,7 @@ git commit -m "ci: add test and five-target cross-compile workflow"
 
 ---
 
-### Tarea 6: Formato del corpus y cargador en Go
+### Task 6 — Formato del corpus y cargador en Go
 
 **Ficheros:**
 - Crear: `internal/testutil/corpus.go`
@@ -785,14 +795,25 @@ func TestRepoRootFindsGoMod(t *testing.T) {
 }
 
 // mustField extrae input["args"][index] como JSON crudo.
+//
+// Se deserializa en dos pasos a propósito: el objeto "input" es heterogéneo,
+// porque "args" es un array y "kwargs" es un objeto, así que no se puede
+// deserializar entero en map[string][]json.RawMessage.
 func mustField(t *testing.T, raw json.RawMessage, key string, index int) json.RawMessage {
 	t.Helper()
-	var wrapper map[string][]json.RawMessage
-	if err := json.Unmarshal(raw, &wrapper); err != nil {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
 		t.Fatalf("deserializando %s: %v", raw, err)
 	}
-	items, ok := wrapper[key]
-	if !ok || len(items) <= index {
+	value, ok := fields[key]
+	if !ok {
+		t.Fatalf("no existe la clave %q en %s", key, raw)
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(value, &items); err != nil {
+		t.Fatalf("la clave %q no es un array: %v", key, err)
+	}
+	if len(items) <= index {
 		t.Fatalf("no existe %s[%d] en %s", key, index, raw)
 	}
 	return items[index]
@@ -986,7 +1007,7 @@ git commit -m "feat(testutil): add golden corpus loader with function, sequence 
 
 ---
 
-### Tarea 7: Entorno Python fijado y checkout del upstream
+### Task 7 — Entorno Python fijado y checkout del upstream
 
 **Ficheros:**
 - Crear: `tools/corpus/pyproject.toml`
@@ -1083,7 +1104,7 @@ git commit -m "chore(corpus): pin upstream checkout and Python 3.10 environment"
 
 ---
 
-### Tarea 8: Grabador, modo función
+### Task 8 — Grabador, modo función
 
 **Ficheros:**
 - Crear: `tools/corpus/recorder.py`
@@ -1464,7 +1485,7 @@ git commit -m "feat(corpus): add pytest recorder plugin with function mode"
 
 ---
 
-### Tarea 9: Grabador, modo secuencia
+### Task 9 — Grabador, modo secuencia
 
 **Ficheros:**
 - Modificar: `tools/corpus/recorder.py`
@@ -1607,7 +1628,7 @@ git commit -m "feat(corpus): record stateful parsers as full call sequences"
 
 ---
 
-### Tarea 10: Grabador, modo generador
+### Task 10 — Grabador, modo generador
 
 **Ficheros:**
 - Modificar: `tools/corpus/recorder.py`
@@ -1757,7 +1778,7 @@ descartadas."
 
 ---
 
-### Tarea 11: Generación completa, tope de casos y prueba de determinismo
+### Task 11 — Generación completa, tope de casos y prueba de determinismo
 
 **Ficheros:**
 - Crear: `tools/corpus/validate.py`
@@ -1999,7 +2020,7 @@ git commit -m "feat(corpus): add validator, snapshot comparator and case budget"
 
 ---
 
-### Tarea 12: Versionar el corpus
+### Task 12 — Versionar el corpus
 
 **Ficheros:**
 - Crear: `.gitattributes`
@@ -2050,7 +2071,7 @@ Esperado: sin salida.
 
 ---
 
-### Tarea 13: Validación estructural del corpus real desde Go
+### Task 13 — Validación estructural del corpus real desde Go
 
 **Ficheros:**
 - Crear: `internal/testutil/corpus_integrity_test.go`

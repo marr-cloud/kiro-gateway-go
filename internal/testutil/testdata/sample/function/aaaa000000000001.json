@@ -1,0 +1,7 @@
+{
+  "target": "kiro.sample:add",
+  "kind": "function",
+  "input": {"args": [2, 3], "kwargs": {}},
+  "output": 5,
+  "recorded_at_commit": "a5292ca"
+}

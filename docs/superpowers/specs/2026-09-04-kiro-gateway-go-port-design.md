@@ -840,8 +840,24 @@ hacen los 1.662 tests existentes queda grabada.
 testdata/<paquete>/<función>/<sha256 de la entrada>.json
 ```
 
-Deduplicación por SHA256 de la entrada. Si los argumentos de una llamada no son serializables, el
-caso se descarta sin romper la grabación.
+**Deduplicación por SHA256 de la entrada, comparando la salida al colisionar.** Si dos llamadas
+comparten digest de entrada, se comparan sus salidas (en las secuencias, los pasos): si coinciden
+es un duplicado legítimo y se descarta; si no coinciden es un **conflicto**, que se registra en la
+sección `conflicts` de `testdata/_report.json` y hace fallar `tools/corpus/validate.py` mientras no
+esté declarado y justificado en `tools/corpus/floors.json`.
+
+La regla original de esta sección era deduplicar solo por el hash de la entrada, y era
+insuficiente: varias funciones del upstream no son puras, porque leen banderas de configuración a
+nivel de módulo que los tests parchean, de modo que una misma entrada grabada podía tener dos
+salidas y la segunda se descartaba en silencio contándose como duplicado. Sobre un corpus así el
+criterio de terminado de §8.5 ("si todo caso del corpus pasa, hay paridad") es falso, porque el
+corpus afirma una correspondencia entrada → salida que el propio original contradice. Con la regla
+nueva esas banderas entran en la entrada grabada (`input.config`, declaradas por módulo en
+`tools/corpus/targets.py`), y lo que no se puede completar así queda registrado como conflicto en
+vez de desaparecer. El detalle operativo está en `docs/CORPUS.md`.
+
+Si los argumentos de una llamada no son serializables, el caso se descarta sin romper la
+grabación.
 
 **Funciones instrumentadas:** el ensamblado del payload de Kiro y toda la cadena de normalización
 de roles, los dos adaptadores de dialecto, el parser (`feed` y `find_matching_brace`), la máquina
@@ -849,15 +865,17 @@ de thinking, las cuatro funciones del tokenizer, la resolución de modelos, las 
 payload, los traductores de error, y los formatters SSE grabados en la frontera
 `[]KiroEvent → bytes`.
 
-**Reproducibilidad.** Python fijado a 3.10 con `uv` y dependencias pineadas; tiempo y UUIDs
+**Reproducibilidad.** Python fijado a 3.10 con `uv` y dependencias instaladas desde
+`tools/corpus/requirements.lock`, no resueltas de nuevo en cada máquina; tiempo y UUIDs
 congelados en los mismos valores que ya usan los tests (`2024-01-01T12:00:00Z` y
-`1704110400.0`). Sin esto, regenerar el corpus produce diferencias espurias y deja de servir como
-referencia.
+`1704110400.0`); y la configuración del original fijada de forma explícita por la tarea
+`corpus:record`, con la huella de los valores efectivos volcada en `_report.json`. Sin esto,
+regenerar el corpus produce diferencias espurias y deja de servir como referencia.
 
 **Presupuesto.** Tope determinista de 500 casos por función, eligiendo por hash ordenado, con un
 total por debajo de 50 MB. El recorte es siempre el mismo.
 
-**Lado Go.** `testutil.LoadCorpus(t, "converterscore/BuildKiroPayload")` devuelve los casos, y el
+**Lado Go.** `testutil.LoadCorpus(t, "converters_core/build_kiro_payload")` devuelve los casos, y el
 test itera en formato table-driven con `t.Parallel()`. Un fallo imprime el diff contra el JSON de
 Python e identifica el fichero exacto que lo reprodujo.
 

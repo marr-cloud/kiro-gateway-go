@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_system_tokens", "kind": "function", "input": {"args": [[{"type": "text", "text": "你是 Claude Code"}, {"type": "text", "text": "Follow tools strictly", "cache_control": {"type": "ephemeral"}}]], "kwargs": {"apply_claude_correction": false}}, "output": 15, "recorded_at_commit": "a5292ca"}

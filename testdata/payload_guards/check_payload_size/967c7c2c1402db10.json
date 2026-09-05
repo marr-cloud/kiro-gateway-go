@@ -1,0 +1,1 @@
+{"target": "kiro.payload_guards:check_payload_size", "kind": "function", "input": {"args": [{"conversationState": {"conversationId": "test", "chatTriggerType": "MANUAL", "currentMessage": {"userInputMessage": {"content": "hi", "modelId": "m"}}}}], "kwargs": {}}, "output": 143, "recorded_at_commit": "a5292ca"}

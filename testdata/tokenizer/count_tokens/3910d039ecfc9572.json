@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tokens", "kind": "function", "input": {"args": ["The capital of France is Paris."], "kwargs": {"apply_claude_correction": false}}, "output": 7, "recorded_at_commit": "a5292ca"}

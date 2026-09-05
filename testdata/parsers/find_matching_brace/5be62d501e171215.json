@@ -1,0 +1,1 @@
+{"target": "kiro.parsers:find_matching_brace", "kind": "function", "input": {"args": ["[Called complex_func with args: {\"data\": {\"nested\": {\"deep\": \"value\"}}}]", 32], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": true}}, "output": 70, "recorded_at_commit": "a5292ca"}

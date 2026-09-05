@@ -1,0 +1,1 @@
+{"target": "kiro.kiro_errors:enhance_kiro_error", "kind": "function", "input": {"args": [{"message": "Something went wrong.", "reason": "UNKNOWN_FUTURE_ERROR"}], "kwargs": {}}, "output": {"reason": "UNKNOWN_FUTURE_ERROR", "user_message": "Something went wrong. (reason: UNKNOWN_FUTURE_ERROR)", "original_message": "Something went wrong."}, "recorded_at_commit": "a5292ca"}

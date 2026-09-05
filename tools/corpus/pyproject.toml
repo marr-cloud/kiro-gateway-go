@@ -1,0 +1,21 @@
+[project]
+name = "kiro-gateway-corpus"
+version = "0"
+requires-python = "==3.10.*"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+    "loguru",
+    "python-dotenv",
+    "tiktoken",
+    # pytest y pytest-asyncio van fijados: el orden de ejecucion de la suite forma
+    # parte del contrato del corpus (los identificadores deterministas salen de
+    # contadores globales de sesion), y otra version puede colectar en otro orden.
+    # Ver tools/corpus/requirements.lock para el resto de versiones instaladas.
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+]
+
+[tool.uv]
+package = false

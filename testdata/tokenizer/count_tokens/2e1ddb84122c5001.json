@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tokens", "kind": "function", "input": {"args": ["This is a test for consistency checking"], "kwargs": {}}, "output": 8, "recorded_at_commit": "a5292ca"}

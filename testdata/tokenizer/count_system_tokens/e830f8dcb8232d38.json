@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_system_tokens", "kind": "function", "input": {"args": [[{"type": "text", "text": "You are a helpful assistant.", "cache_control": null}, {"type": "text", "text": "Be concise.", "cache_control": {"type": "ephemeral"}}]], "kwargs": {"apply_claude_correction": true}}, "output": 19, "recorded_at_commit": "a5292ca"}

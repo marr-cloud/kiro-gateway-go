@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tokens", "kind": "function", "input": {"args": ["\n<web_search>\nSearch results for \"Python\":\n\n1. Title: **Test**\n   URL: https://test.com\n   Test\n\n</web_search>\n"], "kwargs": {"apply_claude_correction": false}}, "output": 33, "recorded_at_commit": "a5292ca"}

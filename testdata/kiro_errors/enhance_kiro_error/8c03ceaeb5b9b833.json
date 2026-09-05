@@ -1,0 +1,1 @@
+{"target": "kiro.kiro_errors:enhance_kiro_error", "kind": "function", "input": {"args": [{"reason": "CONTENT_LENGTH_EXCEEDS_THRESHOLD"}], "kwargs": {}}, "output": {"reason": "CONTENT_LENGTH_EXCEEDS_THRESHOLD", "user_message": "Model context limit reached. Conversation size exceeds model capacity.", "original_message": "Unknown error"}, "recorded_at_commit": "a5292ca"}

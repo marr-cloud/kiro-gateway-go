@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_message_tokens", "kind": "function", "input": {"args": [[{"role": "assistant", "content": "", "tool_calls": [{"id": "call_123", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\": \"Moscow\"}"}}]}]], "kwargs": {}}, "output": 24, "recorded_at_commit": "a5292ca"}

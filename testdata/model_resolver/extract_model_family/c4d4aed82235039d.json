@@ -1,0 +1,1 @@
+{"target": "kiro.model_resolver:extract_model_family", "kind": "function", "input": {"args": ["CLAUDE-HAIKU-4.5"], "kwargs": {}}, "output": "haiku", "recorded_at_commit": "a5292ca"}

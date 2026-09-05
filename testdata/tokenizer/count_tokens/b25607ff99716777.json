@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tokens", "kind": "function", "input": {"args": ["You are a helpful AI assistant. Be concise and accurate."], "kwargs": {"apply_claude_correction": false}}, "output": 12, "recorded_at_commit": "a5292ca"}

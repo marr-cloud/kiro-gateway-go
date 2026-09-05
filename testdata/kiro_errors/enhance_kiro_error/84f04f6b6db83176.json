@@ -1,0 +1,1 @@
+{"target": "kiro.kiro_errors:enhance_kiro_error", "kind": "function", "input": {"args": [{"message": "", "reason": "SOME_ERROR"}], "kwargs": {}}, "output": {"reason": "SOME_ERROR", "user_message": " (reason: SOME_ERROR)", "original_message": ""}, "recorded_at_commit": "a5292ca"}

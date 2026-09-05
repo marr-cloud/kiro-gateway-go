@@ -1,0 +1,1236 @@
+{
+  "commit": "a5292ca",
+  "max_per_target": 500,
+  "upstream_exit_status": 0,
+  "test_order": {
+    "count": 1691,
+    "sha256_16": "3104c2e660faee8a"
+  },
+  "config": {
+    "sha256_16": "7dc65ce471583d62",
+    "env_vars_read_by_config": 34,
+    "env_vars_set": {
+      "ACCOUNTS_CONFIG_FILE": "credentials.json",
+      "ACCOUNTS_STATE_FILE": "state.json",
+      "ACCOUNT_CACHE_TTL": "43200",
+      "ACCOUNT_MAX_BACKOFF_MULTIPLIER": "1440.0",
+      "ACCOUNT_PROBABILISTIC_RETRY_CHANCE": "0.1",
+      "ACCOUNT_RECOVERY_TIMEOUT": "60",
+      "ACCOUNT_SYSTEM": "false",
+      "AUTO_TRIM_PAYLOAD": "false",
+      "DEBUG_DIR": "debug_logs",
+      "DEBUG_MODE": "off",
+      "FAKE_REASONING": "true",
+      "FAKE_REASONING_BUDGET_CAP": "10000",
+      "FAKE_REASONING_HANDLING": "as_reasoning_content",
+      "FAKE_REASONING_INITIAL_BUFFER_SIZE": "20",
+      "FAKE_REASONING_MAX_TOKENS": "<puesto>",
+      "FIRST_TOKEN_MAX_RETRIES": "<puesto>",
+      "FIRST_TOKEN_TIMEOUT": "<puesto>",
+      "KIRO_CLI_DB_FILE": "",
+      "KIRO_CREDS_FILE": "<puesto>",
+      "KIRO_MAX_PAYLOAD_BYTES": "600000",
+      "KIRO_REGION": "us-east-1",
+      "LOG_LEVEL": "INFO",
+      "PROFILE_ARN": "<puesto>",
+      "PROXY_API_KEY": "<puesto>",
+      "REFRESH_TOKEN": "<puesto>",
+      "SERVER_HOST": "0.0.0.0",
+      "SERVER_PORT": "8000",
+      "SQLITE_READONLY": "false",
+      "STATE_SAVE_INTERVAL_SECONDS": "10",
+      "STREAMING_READ_TIMEOUT": "300",
+      "TOOL_DESCRIPTION_MAX_LENGTH": "10000",
+      "TRUNCATION_RECOVERY": "true",
+      "VPN_PROXY_URL": "<puesto>",
+      "WEB_SEARCH_ENABLED": "true"
+    },
+    "env_vars_unset": [],
+    "dotenv_files_found": [],
+    "values": {
+      "ACCOUNTS_CONFIG_FILE": "credentials.json",
+      "ACCOUNTS_STATE_FILE": "state.json",
+      "ACCOUNT_CACHE_TTL": 43200,
+      "ACCOUNT_MAX_BACKOFF_MULTIPLIER": 1440.0,
+      "ACCOUNT_PROBABILISTIC_RETRY_CHANCE": 0.1,
+      "ACCOUNT_RECOVERY_TIMEOUT": 60,
+      "ACCOUNT_SYSTEM": false,
+      "APP_DESCRIPTION": "Proxy gateway for Kiro API (Amazon Q Developer / AWS CodeWhisperer). OpenAI and Anthropic compatible. Made by @jwadow",
+      "APP_TITLE": "Kiro Gateway",
+      "APP_VERSION": "2.4.dev.13",
+      "AUTO_TRIM_PAYLOAD": false,
+      "AWS_SSO_OIDC_URL_TEMPLATE": "https://oidc.{region}.amazonaws.com/token",
+      "BASE_RETRY_DELAY": 1.0,
+      "DEBUG_DIR": "debug_logs",
+      "DEBUG_MODE": "off",
+      "DEFAULT_MAX_INPUT_TOKENS": "<puesto>",
+      "DEFAULT_SERVER_HOST": "0.0.0.0",
+      "DEFAULT_SERVER_PORT": 8000,
+      "FAKE_REASONING_BUDGET_CAP": 10000,
+      "FAKE_REASONING_ENABLED": true,
+      "FAKE_REASONING_HANDLING": "as_reasoning_content",
+      "FAKE_REASONING_INITIAL_BUFFER_SIZE": 20,
+      "FAKE_REASONING_MAX_TOKENS": "<puesto>",
+      "FAKE_REASONING_OPEN_TAGS": [
+        "<thinking>",
+        "<think>",
+        "<reasoning>",
+        "<thought>"
+      ],
+      "FALLBACK_MODELS": [
+        {
+          "modelId": "auto"
+        },
+        {
+          "modelId": "claude-sonnet-4"
+        },
+        {
+          "modelId": "claude-sonnet-4.5"
+        },
+        {
+          "modelId": "claude-sonnet-4.6"
+        },
+        {
+          "modelId": "claude-haiku-4.5"
+        },
+        {
+          "modelId": "claude-opus-4.5"
+        },
+        {
+          "modelId": "claude-opus-4.6"
+        },
+        {
+          "modelId": "claude-opus-4.7"
+        },
+        {
+          "modelId": "deepseek-3.2"
+        },
+        {
+          "modelId": "glm-5"
+        },
+        {
+          "modelId": "minimax-m2.1"
+        },
+        {
+          "modelId": "minimax-m2.5"
+        },
+        {
+          "modelId": "qwen3-coder-next"
+        }
+      ],
+      "FIRST_TOKEN_MAX_RETRIES": "<puesto>",
+      "FIRST_TOKEN_TIMEOUT": "<puesto>",
+      "HIDDEN_FROM_LIST": [
+        "auto"
+      ],
+      "HIDDEN_MODELS": {},
+      "KIRO_API_HOST_TEMPLATE": "https://runtime.{region}.kiro.dev",
+      "KIRO_CLI_DB_FILE": "",
+      "KIRO_CREDS_FILE": "<vacio>",
+      "KIRO_MAX_PAYLOAD_BYTES": 600000,
+      "KIRO_Q_HOST_TEMPLATE": "https://runtime.{region}.kiro.dev",
+      "KIRO_REFRESH_URL_TEMPLATE": "https://prod.{region}.auth.desktop.kiro.dev/refreshToken",
+      "LOG_LEVEL": "INFO",
+      "MAX_RETRIES": 3,
+      "MODEL_ALIASES": {
+        "auto-kiro": "auto"
+      },
+      "MODEL_CACHE_TTL": 3600,
+      "PROFILE_ARN": "<vacio>",
+      "PROXY_API_KEY": "<puesto>",
+      "REFRESH_TOKEN": "<vacio>",
+      "REGION": "us-east-1",
+      "SERVER_HOST": "0.0.0.0",
+      "SERVER_PORT": 8000,
+      "SQLITE_READONLY": false,
+      "STATE_SAVE_INTERVAL_SECONDS": 10,
+      "STREAMING_READ_TIMEOUT": 300.0,
+      "TOKEN_REFRESH_THRESHOLD": "<puesto>",
+      "TOOL_DESCRIPTION_MAX_LENGTH": 10000,
+      "TRUNCATION_RECOVERY": true,
+      "VPN_PROXY_URL": "<vacio>",
+      "WEB_SEARCH_ENABLED": true
+    }
+  },
+  "recorded": {
+    "account_errors/classify_error": 27,
+    "converters_anthropic/anthropic_to_kiro": 32,
+    "converters_anthropic/convert_anthropic_content_to_text": 49,
+    "converters_anthropic/convert_anthropic_messages": 22,
+    "converters_anthropic/convert_anthropic_tools": 10,
+    "converters_anthropic/extract_images_from_tool_results": 35,
+    "converters_anthropic/extract_system_prompt": 12,
+    "converters_anthropic/extract_thinking_config_from_anthropic": 31,
+    "converters_anthropic/extract_tool_results_from_anthropic_content": 39,
+    "converters_anthropic/extract_tool_uses_from_anthropic_content": 21,
+    "converters_core/build_kiro_history": 37,
+    "converters_core/build_kiro_payload": 83,
+    "converters_core/convert_images_to_kiro_format": 25,
+    "converters_core/convert_tool_results_to_kiro_format": 17,
+    "converters_core/convert_tools_to_kiro_format": 27,
+    "converters_core/ensure_alternating_roles": 43,
+    "converters_core/ensure_assistant_before_tool_results": 33,
+    "converters_core/ensure_first_message_is_user": 40,
+    "converters_core/extract_images_from_content": 100,
+    "converters_core/extract_text_content": 152,
+    "converters_core/extract_tool_results_from_content": 53,
+    "converters_core/extract_tool_uses_from_message": 34,
+    "converters_core/get_thinking_system_prompt_addition": 3,
+    "converters_core/get_truncation_recovery_system_addition": 4,
+    "converters_core/inject_thinking_tags": 55,
+    "converters_core/merge_adjacent_messages": 41,
+    "converters_core/normalize_message_roles": 42,
+    "converters_core/process_tools_with_long_descriptions": 30,
+    "converters_core/sanitize_json_schema": 25,
+    "converters_core/strip_all_tool_content": 44,
+    "converters_core/tool_calls_to_text": 22,
+    "converters_core/tool_results_to_text": 29,
+    "converters_core/validate_tool_names": 25,
+    "converters_openai/build_kiro_payload": 38,
+    "converters_openai/convert_openai_messages_to_unified": 31,
+    "converters_openai/convert_openai_tools_to_unified": 25,
+    "converters_openai/extract_thinking_config_from_openai": 37,
+    "converters_openai/reasoning_effort_to_budget": 10,
+    "kiro_errors/enhance_kiro_error": 21,
+    "model_resolver/extract_model_family": 14,
+    "model_resolver/normalize_model_name": 40,
+    "model_resolver/to_runtime_model_id": 15,
+    "network_errors/classify_network_error": 27,
+    "network_errors/format_error_for_user": 4,
+    "network_errors/get_short_error_message": 9,
+    "parsers/AwsEventStreamParser": 22,
+    "parsers/deduplicate_tool_calls": 19,
+    "parsers/find_matching_brace": 39,
+    "parsers/parse_bracket_tool_calls": 11,
+    "payload_guards/check_payload_size": 27,
+    "payload_guards/trim_payload_to_limit": 8,
+    "streaming_anthropic/format_sse_event": 83,
+    "streaming_anthropic/stream_kiro_to_anthropic": 20,
+    "streaming_openai/stream_kiro_to_openai_internal": 40,
+    "thinking_parser/ThinkingParser": 49,
+    "tokenizer/count_message_tokens": 43,
+    "tokenizer/count_system_tokens": 19,
+    "tokenizer/count_tokens": 136,
+    "tokenizer/count_tools_tokens": 28,
+    "tokenizer/estimate_request_tokens": 29,
+    "truncation_recovery/generate_truncation_tool_result": 13,
+    "truncation_recovery/generate_truncation_user_message": 2,
+    "truncation_recovery/should_inject_recovery": 2,
+    "utils/generate_conversation_id": 1
+  },
+  "duplicates": {
+    "account_errors/classify_error": 6,
+    "converters_anthropic/convert_anthropic_content_to_text": 31,
+    "converters_anthropic/convert_anthropic_messages": 21,
+    "converters_anthropic/convert_anthropic_tools": 28,
+    "converters_anthropic/extract_images_from_tool_results": 27,
+    "converters_anthropic/extract_system_prompt": 31,
+    "converters_anthropic/extract_thinking_config_from_anthropic": 6,
+    "converters_anthropic/extract_tool_results_from_anthropic_content": 28,
+    "converters_anthropic/extract_tool_uses_from_anthropic_content": 4,
+    "converters_core/build_kiro_history": 66,
+    "converters_core/build_kiro_payload": 1,
+    "converters_core/convert_images_to_kiro_format": 3,
+    "converters_core/convert_tool_results_to_kiro_format": 2,
+    "converters_core/convert_tools_to_kiro_format": 63,
+    "converters_core/ensure_alternating_roles": 52,
+    "converters_core/ensure_assistant_before_tool_results": 45,
+    "converters_core/ensure_first_message_is_user": 53,
+    "converters_core/extract_images_from_content": 154,
+    "converters_core/extract_text_content": 209,
+    "converters_core/extract_tool_results_from_content": 70,
+    "converters_core/extract_tool_uses_from_message": 5,
+    "converters_core/get_thinking_system_prompt_addition": 82,
+    "converters_core/get_truncation_recovery_system_addition": 84,
+    "converters_core/inject_thinking_tags": 51,
+    "converters_core/merge_adjacent_messages": 54,
+    "converters_core/normalize_message_roles": 53,
+    "converters_core/process_tools_with_long_descriptions": 65,
+    "converters_core/sanitize_json_schema": 116,
+    "converters_core/strip_all_tool_content": 7,
+    "converters_core/tool_calls_to_text": 2,
+    "converters_core/tool_results_to_text": 9,
+    "converters_core/validate_tool_names": 64,
+    "converters_openai/build_kiro_payload": 1,
+    "converters_openai/convert_openai_messages_to_unified": 28,
+    "converters_openai/convert_openai_tools_to_unified": 25,
+    "converters_openai/extract_thinking_config_from_openai": 9,
+    "converters_openai/reasoning_effort_to_budget": 3,
+    "kiro_errors/enhance_kiro_error": 11,
+    "model_resolver/extract_model_family": 1,
+    "model_resolver/normalize_model_name": 118,
+    "model_resolver/to_runtime_model_id": 85,
+    "network_errors/classify_network_error": 16,
+    "network_errors/get_short_error_message": 12,
+    "parsers/AwsEventStreamParser": 38,
+    "parsers/deduplicate_tool_calls": 83,
+    "parsers/find_matching_brace": 125,
+    "parsers/parse_bracket_tool_calls": 38,
+    "payload_guards/check_payload_size": 24,
+    "streaming_anthropic/format_sse_event": 76,
+    "streaming_openai/stream_kiro_to_openai_internal": 4,
+    "thinking_parser/ThinkingParser": 38,
+    "tokenizer/count_message_tokens": 33,
+    "tokenizer/count_system_tokens": 36,
+    "tokenizer/count_tokens": 442,
+    "tokenizer/count_tools_tokens": 49,
+    "tokenizer/estimate_request_tokens": 15,
+    "truncation_recovery/generate_truncation_tool_result": 1,
+    "truncation_recovery/generate_truncation_user_message": 6,
+    "truncation_recovery/should_inject_recovery": 83
+  },
+  "conflicts": {
+    "targets": 3,
+    "inputs": 13,
+    "discarded_calls": 67,
+    "per_target": {
+      "streaming_anthropic/stream_kiro_to_anthropic": {
+        "inputs": 3,
+        "discarded_calls": 4,
+        "kinds": {
+          "identifier_only": 3
+        },
+        "worst_kind": "identifier_only"
+      },
+      "streaming_openai/stream_kiro_to_openai_internal": {
+        "inputs": 9,
+        "discarded_calls": 19,
+        "kinds": {
+          "identifier_only": 9
+        },
+        "worst_kind": "identifier_only"
+      },
+      "utils/generate_conversation_id": {
+        "inputs": 1,
+        "discarded_calls": 44,
+        "kinds": {
+          "identifier_only": 1
+        },
+        "worst_kind": "identifier_only"
+      }
+    },
+    "detail": [
+      {
+        "target": "streaming_anthropic/stream_kiro_to_anthropic",
+        "kind": "identifier_only",
+        "input_sha256_16": "0c110ac7817fc89b",
+        "in_corpus": true,
+        "kept_output_sha256_16": "02d571e6fcccacc3",
+        "variants": [
+          {
+            "output_sha256_16": "02d571e6fcccacc3",
+            "masked_sha256_16": "33e4c3fada018876",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_anthropic.py::TestStreamKiroToAnthropic::test_yields_message_delta_with_stop_reason",
+            "output_preview": "[\"event: message_start\\ndata: {\\\"type\\\": \\\"message_start\\\", \\\"message\\\": {\\\"id\\\": \\\"msg_000000000000000000000081\\\", \\\"type\\\": \\\"message\\\", \\\"role\\\": \\\"assistant\\\", \\\"content\\\": [], \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"stop_reason\\\": null, \\\"st... (+703 caracteres)"
+          },
+          {
+            "output_sha256_16": "79bb8651a16011e5",
+            "masked_sha256_16": "33e4c3fada018876",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_anthropic.py::TestStreamingAnthropicContextUsage::test_calculates_tokens_from_context_usage",
+            "output_preview": "[\"event: message_start\\ndata: {\\\"type\\\": \\\"message_start\\\", \\\"message\\\": {\\\"id\\\": \\\"msg_000000000000000000000097\\\", \\\"type\\\": \\\"message\\\", \\\"role\\\": \\\"assistant\\\", \\\"content\\\": [], \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"stop_reason\\\": null, \\\"st... (+703 caracteres)"
+          }
+        ],
+        "input": {
+          "kwargs": {
+            "model": "claude-sonnet-4"
+          },
+          "events": [
+            {
+              "type": "content",
+              "content": "Hello",
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            },
+            {
+              "type": "context_usage",
+              "content": null,
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": 5.0,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            }
+          ],
+          "config": {
+            "FIRST_TOKEN_TIMEOUT": 15.0,
+            "FIRST_TOKEN_MAX_RETRIES": 3,
+            "TRUNCATION_RECOVERY": false,
+            "FAKE_REASONING_HANDLING": "as_reasoning_content",
+            "FAKE_REASONING_OPEN_TAGS": [
+              "<thinking>",
+              "<think>",
+              "<reasoning>",
+              "<thought>"
+            ],
+            "FAKE_REASONING_INITIAL_BUFFER_SIZE": 20
+          }
+        }
+      },
+      {
+        "target": "streaming_anthropic/stream_kiro_to_anthropic",
+        "kind": "identifier_only",
+        "input_sha256_16": "140d3174a89722ea",
+        "in_corpus": true,
+        "kept_output_sha256_16": "edf67001f959e7e8",
+        "variants": [
+          {
+            "output_sha256_16": "edf67001f959e7e8",
+            "masked_sha256_16": "d89bcb53c666d5ff",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_anthropic.py::TestStreamKiroToAnthropic::test_yields_content_block_start_on_first_content",
+            "output_preview": "[\"event: message_start\\ndata: {\\\"type\\\": \\\"message_start\\\", \\\"message\\\": {\\\"id\\\": \\\"msg_00000000000000000000007e\\\", \\\"type\\\": \\\"message\\\", \\\"role\\\": \\\"assistant\\\", \\\"content\\\": [], \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"stop_reason\\\": null, \\\"st... (+705 caracteres)"
+          },
+          {
+            "output_sha256_16": "2bee67bfc0446d73",
+            "masked_sha256_16": "d89bcb53c666d5ff",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_anthropic.py::TestStreamKiroToAnthropic::test_yields_message_stop_at_end",
+            "output_preview": "[\"event: message_start\\ndata: {\\\"type\\\": \\\"message_start\\\", \\\"message\\\": {\\\"id\\\": \\\"msg_000000000000000000000082\\\", \\\"type\\\": \\\"message\\\", \\\"role\\\": \\\"assistant\\\", \\\"content\\\": [], \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"stop_reason\\\": null, \\\"st... (+705 caracteres)"
+          },
+          {
+            "output_sha256_16": "731c460eb264608f",
+            "masked_sha256_16": "d89bcb53c666d5ff",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_anthropic.py::TestStreamKiroToAnthropic::test_closes_response_on_completion",
+            "output_preview": "[\"event: message_start\\ndata: {\\\"type\\\": \\\"message_start\\\", \\\"message\\\": {\\\"id\\\": \\\"msg_000000000000000000000085\\\", \\\"type\\\": \\\"message\\\", \\\"role\\\": \\\"assistant\\\", \\\"content\\\": [], \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"stop_reason\\\": null, \\\"st... (+705 caracteres)"
+          }
+        ],
+        "input": {
+          "kwargs": {
+            "model": "claude-sonnet-4"
+          },
+          "events": [
+            {
+              "type": "content",
+              "content": "Hello",
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            }
+          ],
+          "config": {
+            "FIRST_TOKEN_TIMEOUT": 15.0,
+            "FIRST_TOKEN_MAX_RETRIES": 3,
+            "TRUNCATION_RECOVERY": false,
+            "FAKE_REASONING_HANDLING": "as_reasoning_content",
+            "FAKE_REASONING_OPEN_TAGS": [
+              "<thinking>",
+              "<think>",
+              "<reasoning>",
+              "<thought>"
+            ],
+            "FAKE_REASONING_INITIAL_BUFFER_SIZE": 20
+          }
+        }
+      },
+      {
+        "target": "streaming_anthropic/stream_kiro_to_anthropic",
+        "kind": "identifier_only",
+        "input_sha256_16": "8b203c6c1e017dea",
+        "in_corpus": true,
+        "kept_output_sha256_16": "47dca3f5a9424b76",
+        "variants": [
+          {
+            "output_sha256_16": "47dca3f5a9424b76",
+            "masked_sha256_16": "7d764a875ad8f085",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_anthropic.py::TestStreamKiroToAnthropic::test_closes_response_on_error",
+            "output_preview": "[\"event: message_start\\ndata: {\\\"type\\\": \\\"message_start\\\", \\\"message\\\": {\\\"id\\\": \\\"msg_000000000000000000000086\\\", \\\"type\\\": \\\"message\\\", \\\"role\\\": \\\"assistant\\\", \\\"content\\\": [], \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"stop_reason\\\": null, \\\"st... (+514 caracteres)"
+          },
+          {
+            "output_sha256_16": "e16062fe90f57f33",
+            "masked_sha256_16": "7d764a875ad8f085",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_anthropic.py::TestStreamingAnthropicErrorHandling::test_yields_error_event_on_exception",
+            "output_preview": "[\"event: message_start\\ndata: {\\\"type\\\": \\\"message_start\\\", \\\"message\\\": {\\\"id\\\": \\\"msg_000000000000000000000093\\\", \\\"type\\\": \\\"message\\\", \\\"role\\\": \\\"assistant\\\", \\\"content\\\": [], \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"stop_reason\\\": null, \\\"st... (+514 caracteres)"
+          }
+        ],
+        "input": {
+          "kwargs": {
+            "model": "claude-sonnet-4"
+          },
+          "events": [
+            {
+              "type": "content",
+              "content": "Hello",
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            },
+            {
+              "__exception__": {
+                "type": "RuntimeError",
+                "module": "builtins",
+                "args": [
+                  "Test error"
+                ],
+                "str": "Test error"
+              }
+            }
+          ],
+          "config": {
+            "FIRST_TOKEN_TIMEOUT": 15.0,
+            "FIRST_TOKEN_MAX_RETRIES": 3,
+            "TRUNCATION_RECOVERY": false,
+            "FAKE_REASONING_HANDLING": "as_reasoning_content",
+            "FAKE_REASONING_OPEN_TAGS": [
+              "<thinking>",
+              "<think>",
+              "<reasoning>",
+              "<thought>"
+            ],
+            "FAKE_REASONING_INITIAL_BUFFER_SIZE": 20
+          }
+        }
+      },
+      {
+        "target": "streaming_openai/stream_kiro_to_openai_internal",
+        "kind": "identifier_only",
+        "input_sha256_16": "27417837e8c7b35a",
+        "in_corpus": true,
+        "kept_output_sha256_16": "51781449e1623cb8",
+        "variants": [
+          {
+            "output_sha256_16": "51781449e1623cb8",
+            "masked_sha256_16": "027030e245cb1a53",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestStreamKiroToOpenai::test_finish_reason_is_tool_calls_when_tools_present",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-0000000000000000000000000000002c\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"tool_calls\\\": [{\\\"index\\\": 0, \\\"id\\\":... (+480 caracteres)"
+          },
+          {
+            "output_sha256_16": "bc073c33999416d2",
+            "masked_sha256_16": "027030e245cb1a53",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestCollectStreamResponse::test_tool_calls_have_no_index",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000044\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"tool_calls\\\": [{\\\"index\\\": 0, \\\"id\\\":... (+480 caracteres)"
+          },
+          {
+            "output_sha256_16": "9a4683d607629f35",
+            "masked_sha256_16": "027030e245cb1a53",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestCollectStreamResponse::test_sets_finish_reason_tool_calls",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000048\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"tool_calls\\\": [{\\\"index\\\": 0, \\\"id\\\":... (+480 caracteres)"
+          }
+        ],
+        "input": {
+          "kwargs": {
+            "model": "claude-sonnet-4",
+            "request_messages": null,
+            "request_tools": null
+          },
+          "events": [
+            {
+              "type": "tool_use",
+              "content": null,
+              "thinking_content": null,
+              "tool_use": {
+                "id": "call_1",
+                "type": "function",
+                "function": {
+                  "name": "func1",
+                  "arguments": "{}"
+                }
+              },
+              "usage": null,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            }
+          ],
+          "config": {
+            "FIRST_TOKEN_TIMEOUT": 15.0,
+            "FIRST_TOKEN_MAX_RETRIES": 3,
+            "TRUNCATION_RECOVERY": false,
+            "FAKE_REASONING_HANDLING": "as_reasoning_content",
+            "FAKE_REASONING_OPEN_TAGS": [
+              "<thinking>",
+              "<think>",
+              "<reasoning>",
+              "<thought>"
+            ],
+            "FAKE_REASONING_INITIAL_BUFFER_SIZE": 20
+          }
+        }
+      },
+      {
+        "target": "streaming_openai/stream_kiro_to_openai_internal",
+        "kind": "identifier_only",
+        "input_sha256_16": "318ca83c382dccce",
+        "in_corpus": true,
+        "kept_output_sha256_16": "d37700cf53611a64",
+        "variants": [
+          {
+            "output_sha256_16": "d37700cf53611a64",
+            "masked_sha256_16": "010605d2a6678198",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestStreamKiroToOpenai::test_first_chunk_has_role",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000027\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+387 caracteres)"
+          },
+          {
+            "output_sha256_16": "42a40c1c49ba6042",
+            "masked_sha256_16": "010605d2a6678198",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestStreamKiroToOpenai::test_yields_done_at_end",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000028\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+387 caracteres)"
+          },
+          {
+            "output_sha256_16": "6c767d58d5c9a622",
+            "masked_sha256_16": "010605d2a6678198",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestStreamKiroToOpenai::test_closes_response_on_completion",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-0000000000000000000000000000002e\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+387 caracteres)"
+          },
+          {
+            "output_sha256_16": "e656e36d1584309c",
+            "masked_sha256_16": "010605d2a6678198",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestCollectStreamResponse::test_generates_completion_id",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-0000000000000000000000000000004c\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+387 caracteres)"
+          },
+          {
+            "output_sha256_16": "9eec918c2097fe1e",
+            "masked_sha256_16": "010605d2a6678198",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestCollectStreamResponse::test_includes_model_name",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-0000000000000000000000000000004e\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+387 caracteres)"
+          },
+          {
+            "output_sha256_16": "0e98e23bf9b4d518",
+            "masked_sha256_16": "010605d2a6678198",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestCollectStreamResponse::test_object_is_chat_completion",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000050\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+387 caracteres)"
+          }
+        ],
+        "input": {
+          "kwargs": {
+            "model": "claude-sonnet-4",
+            "request_messages": null,
+            "request_tools": null
+          },
+          "events": [
+            {
+              "type": "content",
+              "content": "Hello",
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            }
+          ],
+          "config": {
+            "FIRST_TOKEN_TIMEOUT": 15.0,
+            "FIRST_TOKEN_MAX_RETRIES": 3,
+            "TRUNCATION_RECOVERY": false,
+            "FAKE_REASONING_HANDLING": "as_reasoning_content",
+            "FAKE_REASONING_OPEN_TAGS": [
+              "<thinking>",
+              "<think>",
+              "<reasoning>",
+              "<thought>"
+            ],
+            "FAKE_REASONING_INITIAL_BUFFER_SIZE": 20
+          }
+        }
+      },
+      {
+        "target": "streaming_openai/stream_kiro_to_openai_internal",
+        "kind": "identifier_only",
+        "input_sha256_16": "39235a581985cefa",
+        "in_corpus": true,
+        "kept_output_sha256_16": "df19352eaa65bebe",
+        "variants": [
+          {
+            "output_sha256_16": "df19352eaa65bebe",
+            "masked_sha256_16": "311022993bbd6241",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestStreamKiroToOpenai::test_closes_response_on_error",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-0000000000000000000000000000002f\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+43 caracteres)"
+          },
+          {
+            "output_sha256_16": "f9e96a095aed7c47",
+            "masked_sha256_16": "311022993bbd6241",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestStreamingOpenaiErrorHandling::test_propagates_other_exceptions",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000053\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+43 caracteres)"
+          }
+        ],
+        "input": {
+          "kwargs": {
+            "model": "claude-sonnet-4",
+            "request_messages": null,
+            "request_tools": null
+          },
+          "events": [
+            {
+              "type": "content",
+              "content": "Hello",
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            },
+            {
+              "__exception__": {
+                "type": "RuntimeError",
+                "module": "builtins",
+                "args": [
+                  "Test error"
+                ],
+                "str": "Test error"
+              }
+            }
+          ],
+          "config": {
+            "FIRST_TOKEN_TIMEOUT": 15.0,
+            "FIRST_TOKEN_MAX_RETRIES": 3,
+            "TRUNCATION_RECOVERY": false,
+            "FAKE_REASONING_HANDLING": "as_reasoning_content",
+            "FAKE_REASONING_OPEN_TAGS": [
+              "<thinking>",
+              "<think>",
+              "<reasoning>",
+              "<thought>"
+            ],
+            "FAKE_REASONING_INITIAL_BUFFER_SIZE": 20
+          }
+        }
+      },
+      {
+        "target": "streaming_openai/stream_kiro_to_openai_internal",
+        "kind": "identifier_only",
+        "input_sha256_16": "5329f7e8d44bdbf0",
+        "in_corpus": true,
+        "kept_output_sha256_16": "c7942b4d7bd229e8",
+        "variants": [
+          {
+            "output_sha256_16": "c7942b4d7bd229e8",
+            "masked_sha256_16": "9edee245c26ad40a",
+            "calls": 1,
+            "first_test": "tests/integration/test_full_flow.py::TestRequestValidationFlow::test_complex_message_formats",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000008\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4-5\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"a... (+675 caracteres)"
+          },
+          {
+            "output_sha256_16": "e87027457377aeb3",
+            "masked_sha256_16": "9edee245c26ad40a",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsMessageTypes::test_accepts_assistant_message",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000023\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4-5\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"a... (+675 caracteres)"
+          }
+        ],
+        "input": {
+          "kwargs": {
+            "model": "claude-sonnet-4-5",
+            "request_messages": [
+              {
+                "role": "user",
+                "content": "Hello",
+                "name": null,
+                "tool_calls": null,
+                "tool_call_id": null
+              },
+              {
+                "role": "assistant",
+                "content": "Hi there!",
+                "name": null,
+                "tool_calls": null,
+                "tool_call_id": null
+              },
+              {
+                "role": "user",
+                "content": "How are you?",
+                "name": null,
+                "tool_calls": null,
+                "tool_call_id": null
+              }
+            ],
+            "request_tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "web_search",
+                  "description": "Search the web for current information. Use when you need up-to-date data from the internet.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string",
+                        "description": "Search query"
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                },
+                "name": null,
+                "description": null,
+                "input_schema": null
+              }
+            ]
+          },
+          "events": [
+            {
+              "type": "content",
+              "content": "Hello",
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            },
+            {
+              "type": "content",
+              "content": " World",
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            },
+            {
+              "type": "usage",
+              "content": null,
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": 1.0,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            }
+          ],
+          "config": {
+            "FIRST_TOKEN_TIMEOUT": 15.0,
+            "FIRST_TOKEN_MAX_RETRIES": 3,
+            "TRUNCATION_RECOVERY": true,
+            "FAKE_REASONING_HANDLING": "as_reasoning_content",
+            "FAKE_REASONING_OPEN_TAGS": [
+              "<thinking>",
+              "<think>",
+              "<reasoning>",
+              "<thought>"
+            ],
+            "FAKE_REASONING_INITIAL_BUFFER_SIZE": 20
+          }
+        }
+      },
+      {
+        "target": "streaming_openai/stream_kiro_to_openai_internal",
+        "kind": "identifier_only",
+        "input_sha256_16": "715bdfe49574f7cd",
+        "in_corpus": true,
+        "kept_output_sha256_16": "b7f5ab8459c1ed84",
+        "variants": [
+          {
+            "output_sha256_16": "b7f5ab8459c1ed84",
+            "masked_sha256_16": "52198d3d01a250ad",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestStreamKiroToOpenai::test_yields_final_chunk_with_usage",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000029\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+392 caracteres)"
+          },
+          {
+            "output_sha256_16": "50cf2b03703610f3",
+            "masked_sha256_16": "52198d3d01a250ad",
+            "calls": 1,
+            "first_test": "tests/unit/test_streaming_openai.py::TestCollectStreamResponse::test_includes_usage",
+            "output_preview": "[\"data: {\\\"id\\\": \\\"chatcmpl-00000000000000000000000000000046\\\", \\\"object\\\": \\\"chat.completion.chunk\\\", \\\"created\\\": 1704110400, \\\"model\\\": \\\"claude-sonnet-4\\\", \\\"choices\\\": [{\\\"index\\\": 0, \\\"delta\\\": {\\\"content\\\": \\\"Hello\\\", \\\"role\\\": \\\"ass... (+392 caracteres)"
+          }
+        ],
+        "input": {
+          "kwargs": {
+            "model": "claude-sonnet-4",
+            "request_messages": null,
+            "request_tools": null
+          },
+          "events": [
+            {
+              "type": "content",
+              "content": "Hello",
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": null,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            },
+            {
+              "type": "context_usage",
+              "content": null,
+              "thinking_content": null,
+              "tool_use": null,
+              "usage": null,
+              "context_usage_percentage": 5.0,
+              "is_first_thinking_chunk": false,
+              "is_last_thinking_chunk": false
+            }
+          ],
+          "config": {
+            "FIRST_TOKEN_TIMEOUT": 15.0,
+            "FIRST_TOKEN_MAX_RETRIES": 3,
+            "TRUNCATION_RECOVERY": false,
+            "FAKE_REASONING_HANDLING": "as_reasoning_content",
+            "FAKE_REASONING_OPEN_TAGS": [
+              "<thinking>",
+              "<think>",
+              "<reasoning>",
+              "<thought>"
+            ],
+            "FAKE_REASONING_INITIAL_BUFFER_SIZE": 20
+          }
+        }
+      },
+      {
+        "target": "utils/generate_conversation_id",
+        "kind": "identifier_only",
+        "input_sha256_16": "97fcdad9fe31227a",
+        "in_corpus": true,
+        "kept_output_sha256_16": "83817ec53c714ba6",
+        "variants": [
+          {
+            "output_sha256_16": "83817ec53c714ba6",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/integration/test_full_flow.py::TestFullChatCompletionFlow::test_full_flow_health_to_models_to_chat",
+            "output_preview": "\"00000001-0000-4000-8000-000000000001\""
+          },
+          {
+            "output_sha256_16": "9892fb624f54be78",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/integration/test_full_flow.py::TestRequestValidationFlow::test_chat_completions_request_validation",
+            "output_preview": "\"00000003-0000-4000-8000-000000000003\""
+          },
+          {
+            "output_sha256_16": "5cbe5cd54da74729",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/integration/test_full_flow.py::TestRequestValidationFlow::test_complex_message_formats",
+            "output_preview": "\"00000005-0000-4000-8000-000000000005\""
+          },
+          {
+            "output_sha256_16": "cf65ff4797f0a9cb",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/integration/test_full_flow.py::TestRequestValidationFlow::test_complex_message_formats",
+            "output_preview": "\"00000007-0000-4000-8000-000000000007\""
+          },
+          {
+            "output_sha256_16": "66537f70975ec219",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/integration/test_full_flow.py::TestRequestValidationFlow::test_complex_message_formats",
+            "output_preview": "\"00000009-0000-4000-8000-000000000009\""
+          },
+          {
+            "output_sha256_16": "8673d92ef2993373",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/integration/test_full_flow.py::TestStreamingFlagHandling::test_stream_true_accepted",
+            "output_preview": "\"0000000b-0000-4000-8000-00000000000b\""
+          },
+          {
+            "output_sha256_16": "eb4bb51b566c5cdd",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/integration/test_full_flow.py::TestStreamingFlagHandling::test_stream_false_accepted",
+            "output_preview": "\"0000000c-0000-4000-8000-00000000000c\""
+          },
+          {
+            "output_sha256_16": "948ea0897f9c45f1",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesAuthentication::test_messages_accepts_x_api_key",
+            "output_preview": "\"00000014-0000-4000-8000-000000000014\""
+          },
+          {
+            "output_sha256_16": "908032740beb4561",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesAuthentication::test_messages_accepts_bearer_token",
+            "output_preview": "\"00000016-0000-4000-8000-000000000016\""
+          },
+          {
+            "output_sha256_16": "721b8ea74fb34cf5",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesValidation::test_accepts_valid_request_format",
+            "output_preview": "\"00000018-0000-4000-8000-000000000018\""
+          },
+          {
+            "output_sha256_16": "6f3d339ffae0f4e0",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesSystemPrompt::test_accepts_system_as_separate_field",
+            "output_preview": "\"0000001a-0000-4000-8000-00000000001a\""
+          },
+          {
+            "output_sha256_16": "232ae5a22f064891",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesSystemPrompt::test_accepts_empty_system_prompt",
+            "output_preview": "\"0000001c-0000-4000-8000-00000000001c\""
+          },
+          {
+            "output_sha256_16": "36e629faa69a9d0b",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesSystemPrompt::test_accepts_no_system_prompt",
+            "output_preview": "\"0000001e-0000-4000-8000-00000000001e\""
+          },
+          {
+            "output_sha256_16": "239284a12374e9f3",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesContentBlocks::test_accepts_string_content",
+            "output_preview": "\"00000020-0000-4000-8000-000000000020\""
+          },
+          {
+            "output_sha256_16": "3e128100c2f81fdb",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesContentBlocks::test_accepts_content_block_array",
+            "output_preview": "\"00000022-0000-4000-8000-000000000022\""
+          },
+          {
+            "output_sha256_16": "bd2f7a02b771fba3",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesContentBlocks::test_accepts_multiple_content_blocks",
+            "output_preview": "\"00000024-0000-4000-8000-000000000024\""
+          },
+          {
+            "output_sha256_16": "1201826e74b2b66a",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesToolUse::test_accepts_tool_definition",
+            "output_preview": "\"00000026-0000-4000-8000-000000000026\""
+          },
+          {
+            "output_sha256_16": "1599432c9d0f100e",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesToolUse::test_accepts_multiple_tools",
+            "output_preview": "\"00000028-0000-4000-8000-000000000028\""
+          },
+          {
+            "output_sha256_16": "666867869648d3c9",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesToolUse::test_accepts_tool_result_message",
+            "output_preview": "\"0000002a-0000-4000-8000-00000000002a\""
+          },
+          {
+            "output_sha256_16": "68480c59fcffdedf",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesOptionalParams::test_accepts_temperature_parameter",
+            "output_preview": "\"0000002c-0000-4000-8000-00000000002c\""
+          },
+          {
+            "output_sha256_16": "ccc2d5bc6c58a54a",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesOptionalParams::test_accepts_top_p_parameter",
+            "output_preview": "\"0000002e-0000-4000-8000-00000000002e\""
+          },
+          {
+            "output_sha256_16": "74c83afbfc3fb364",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesOptionalParams::test_accepts_top_k_parameter",
+            "output_preview": "\"00000030-0000-4000-8000-000000000030\""
+          },
+          {
+            "output_sha256_16": "099e9cabd7e968b4",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesOptionalParams::test_accepts_stream_true",
+            "output_preview": "\"00000032-0000-4000-8000-000000000032\""
+          },
+          {
+            "output_sha256_16": "ce19cc4122059935",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesOptionalParams::test_accepts_stop_sequences",
+            "output_preview": "\"00000033-0000-4000-8000-000000000033\""
+          },
+          {
+            "output_sha256_16": "a32beb5e634a436d",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesOptionalParams::test_accepts_metadata",
+            "output_preview": "\"00000035-0000-4000-8000-000000000035\""
+          },
+          {
+            "output_sha256_16": "ca7675f39cd2e6d8",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesAnthropicVersion::test_accepts_anthropic_version_header",
+            "output_preview": "\"00000037-0000-4000-8000-000000000037\""
+          },
+          {
+            "output_sha256_16": "3e94ceee73f2e4a7",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesAnthropicVersion::test_works_without_anthropic_version_header",
+            "output_preview": "\"00000039-0000-4000-8000-000000000039\""
+          },
+          {
+            "output_sha256_16": "945581c0ff34bcce",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesConversationHistory::test_accepts_multi_turn_conversation",
+            "output_preview": "\"0000003b-0000-4000-8000-00000000003b\""
+          },
+          {
+            "output_sha256_16": "905cfe2f571b494d",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestMessagesConversationHistory::test_accepts_long_conversation",
+            "output_preview": "\"0000003d-0000-4000-8000-00000000003d\""
+          },
+          {
+            "output_sha256_16": "9b4c674605e1df1e",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestAnthropicHTTPClientSelection::test_streaming_uses_per_request_client",
+            "output_preview": "\"0000003f-0000-4000-8000-00000000003f\""
+          },
+          {
+            "output_sha256_16": "b58adff29ccf2a8a",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_anthropic.py::TestAnthropicHTTPClientSelection::test_non_streaming_uses_shared_client",
+            "output_preview": "\"00000040-0000-4000-8000-000000000040\""
+          },
+          {
+            "output_sha256_16": "7e77b2d9d39d07c6",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsValidation::test_validates_invalid_role",
+            "output_preview": "\"00000041-0000-4000-8000-000000000041\""
+          },
+          {
+            "output_sha256_16": "ae6e51de5c5a3235",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsValidation::test_accepts_valid_request_format",
+            "output_preview": "\"00000043-0000-4000-8000-000000000043\""
+          },
+          {
+            "output_sha256_16": "12b14fb993e0e031",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsValidation::test_accepts_message_without_content",
+            "output_preview": "\"00000045-0000-4000-8000-000000000045\""
+          },
+          {
+            "output_sha256_16": "7d4471c3e8ff4128",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsWithTools::test_accepts_valid_tool_definition",
+            "output_preview": "\"00000047-0000-4000-8000-000000000047\""
+          },
+          {
+            "output_sha256_16": "bc93cb2657614c2b",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsWithTools::test_accepts_multiple_tools",
+            "output_preview": "\"00000049-0000-4000-8000-000000000049\""
+          },
+          {
+            "output_sha256_16": "8d0920466907d248",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsOptionalParams::test_accepts_temperature_parameter",
+            "output_preview": "\"0000004b-0000-4000-8000-00000000004b\""
+          },
+          {
+            "output_sha256_16": "d3359d5ea817e97c",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsOptionalParams::test_accepts_max_tokens_parameter",
+            "output_preview": "\"0000004d-0000-4000-8000-00000000004d\""
+          },
+          {
+            "output_sha256_16": "1fc32d139dafbc17",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsOptionalParams::test_accepts_stream_true",
+            "output_preview": "\"0000004f-0000-4000-8000-00000000004f\""
+          },
+          {
+            "output_sha256_16": "9e8611a737fe26e3",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsOptionalParams::test_accepts_top_p_parameter",
+            "output_preview": "\"00000051-0000-4000-8000-000000000051\""
+          },
+          {
+            "output_sha256_16": "1b64cd90c2e7cd7d",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsMessageTypes::test_accepts_system_message",
+            "output_preview": "\"00000053-0000-4000-8000-000000000053\""
+          },
+          {
+            "output_sha256_16": "770d8175d5e46650",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsMessageTypes::test_accepts_assistant_message",
+            "output_preview": "\"00000055-0000-4000-8000-000000000055\""
+          },
+          {
+            "output_sha256_16": "95a32dddc68ffd18",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestChatCompletionsMessageTypes::test_accepts_multipart_content",
+            "output_preview": "\"00000057-0000-4000-8000-000000000057\""
+          },
+          {
+            "output_sha256_16": "5d4c38990856af46",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestHTTPClientSelection::test_streaming_uses_per_request_client",
+            "output_preview": "\"00000059-0000-4000-8000-000000000059\""
+          },
+          {
+            "output_sha256_16": "fbb624b6d8cc37cf",
+            "masked_sha256_16": "fff8b66a8b09f515",
+            "calls": 1,
+            "first_test": "tests/unit/test_routes_openai.py::TestHTTPClientSelection::test_non_streaming_uses_shared_client",
+            "output_preview": "\"0000005a-0000-4000-8000-00000000005a\""
+          }
+        ],
+        "input": {
+          "args": [],
+          "kwargs": {}
+        }
+      }
+    ],
+    "detail_omitted": 4
+  },
+  "skipped": {
+    "streaming_anthropic/stream_kiro_to_anthropic: el consumidor abandono el stream a medias": 1
+  },
+  "total_cases": 2104
+}

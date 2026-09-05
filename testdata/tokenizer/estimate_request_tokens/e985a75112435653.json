@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:estimate_request_tokens", "kind": "function", "input": {"args": [[]], "kwargs": {}}, "output": {"messages_tokens": 0, "tools_tokens": 0, "system_tokens": 0, "total_tokens": 0}, "recorded_at_commit": "a5292ca"}

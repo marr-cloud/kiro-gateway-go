@@ -1,0 +1,1 @@
+{"target": "kiro.kiro_errors:enhance_kiro_error", "kind": "function", "input": {"args": [{"message": "Model not found.", "reason": "INVALID_MODEL_ID"}], "kwargs": {}}, "output": {"reason": "INVALID_MODEL_ID", "user_message": "Invalid model ID or insufficient subscription level to use it.", "original_message": "Model not found."}, "recorded_at_commit": "a5292ca"}

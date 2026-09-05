@@ -1,0 +1,206 @@
+{
+  "_comment": [
+    "Minimos exigidos al corpus generado. Existen para que la comprobacion no pueda",
+    "pasar en vacio: sin ellos, un grabador roto produce cero casos y tanto",
+    "validate.py como snapshot.py compare terminan en verde sobre la nada.",
+    "Tambien impiden que se recupere la salida facil de excluir un objetivo valioso",
+    "de targets.py para que la prueba de determinismo deje de fallar.",
+    "Si un cambio legitimo del upstream fijado reduce un recuento, hay que bajar el",
+    "minimo aqui a proposito, con su motivo, no en silencio en el codigo."
+  ],
+  "_politica": [
+    "SON MINIMOS, NO VALORES EXACTOS. La comparacion es 'casos >= minimo'. Anadir",
+    "tests al upstream solo puede subir los recuentos, asi que no rompe nada; lo que",
+    "rompe la validacion es PERDER casos, que es justo lo que se quiere detectar.",
+    "",
+    "Los valores son los recuentos reales del corpus grabado del commit a5292ca, con",
+    "margen cero a proposito: el corpus se congela en la tarea 12 y a partir de ahi",
+    "cualquier caida de un recuento es una regresion del grabador, no ruido. Un",
+    "margen global 'redondo' (1700 sobre 1735) dejaba desaparecer objetivos enteros",
+    "de hasta 35 casos sin que nada avisara.",
+    "",
+    "min_total_cases es exactamente la suma de min_per_target, no un numero a ojo.",
+    "min_targets_with_cases cubre el hueco que dejaban los minimos por objetivo:",
+    "sin el, perder un objetivo pequeno entero no disparaba nada.",
+    "",
+    "TENSION CON EL TOPE POR OBJETIVO (CORPUS_MAX_PER_TARGET):",
+    "el brief permite bajar el tope si el corpus se sale del presupuesto de 50 MB, y",
+    "unos minimos iguales a los recuentos reales lo harian imposible. Se resuelve en",
+    "validate.py comparando contra el minimo EFECTIVO = min(minimo, tope vigente):",
+    "  - con el tope de referencia (expected_max_per_target) se exige el minimo tal",
+    "    cual, porque el tope no recorta a nadie;",
+    "  - si se baja el tope, los minimos por encima del tope se recortan a el y la",
+    "    bajada sale como NOTA, no como fallo, indicando el minimo declarado;",
+    "  - min_total_cases se recorta igual, a la suma de los minimos efectivos.",
+    "Asi el tope sigue siendo una palanca usable y los minimos siguen vigilando todo",
+    "lo que el tope no recorta.",
+    "",
+    "Cada entrada de min_per_target es un entero, o un objeto {min, reason} cuando el",
+    "objetivo merece explicacion propia."
+  ],
+  "_historial": [
+    "Ronda de arreglo 6 de la tarea 11: el grabador aprendio a serializar modelos",
+    "pydantic (objeto plano, sin marcador) y excepciones (marcador __exception__).",
+    "Con eso desaparecieron los seis known_empty_targets y el corpus paso de 58",
+    "objetivos y 1735 casos a 64 objetivos y 2032 casos, sin perder ni un caso: 15",
+    "objetivos que ya grababan subieron porque sus llamadas se descartaban cuando",
+    "algun argumento era un modelo pydantic. El grabador ya no descarta ninguna",
+    "llamada: la seccion skipped de testdata/_report.json queda vacia.",
+    "",
+    "Revision final de la fase 1: la deduplicacion pasa a comparar la SALIDA cuando",
+    "colisiona el digest de la entrada, y las banderas de configuracion que las",
+    "funciones leian a escondidas entran en input.config (targets.py, CONFIG_INPUTS).",
+    "Con eso 26 objetivos suben de recuento y el corpus va de 2032 a 2104 casos con",
+    "los mismos 64 objetivos. El unico que baja es utils/get_machine_fingerprint, de",
+    "1 caso a ninguno, retirado a proposito: su golden solo valdria en la maquina que",
+    "lo grabo (ver EXCLUDED en targets.py). A cambio entra utils/generate_conversation_id."
+  ],
+  "expected_max_per_target": 500,
+  "min_targets_with_cases": 64,
+  "min_total_cases": 2104,
+  "min_per_target": {
+    "account_errors/classify_error": 27,
+    "converters_anthropic/anthropic_to_kiro": {
+      "min": 32,
+      "reason": "punto de entrada de la fase 3 por el lado de Anthropic; sin estos casos la fase 3 se valida a ciegas"
+    },
+    "converters_anthropic/convert_anthropic_content_to_text": 49,
+    "converters_anthropic/convert_anthropic_messages": 22,
+    "converters_anthropic/convert_anthropic_tools": 10,
+    "converters_anthropic/extract_images_from_tool_results": 35,
+    "converters_anthropic/extract_system_prompt": 12,
+    "converters_anthropic/extract_thinking_config_from_anthropic": {
+      "min": 31,
+      "reason": "entrada AnthropicMessagesRequest; unica fuente golden de como se deriva la configuracion de thinking"
+    },
+    "converters_anthropic/extract_tool_results_from_anthropic_content": 39,
+    "converters_anthropic/extract_tool_uses_from_anthropic_content": 21,
+    "converters_core/build_kiro_history": 37,
+    "converters_core/build_kiro_payload": {
+      "min": 83,
+      "reason": "conversion central a payload de Kiro; la fase 3 se valida contra estos casos"
+    },
+    "converters_core/convert_images_to_kiro_format": 25,
+    "converters_core/convert_tool_results_to_kiro_format": 17,
+    "converters_core/convert_tools_to_kiro_format": 27,
+    "converters_core/ensure_alternating_roles": 43,
+    "converters_core/ensure_assistant_before_tool_results": 33,
+    "converters_core/ensure_first_message_is_user": 40,
+    "converters_core/extract_images_from_content": 100,
+    "converters_core/extract_text_content": 152,
+    "converters_core/extract_tool_results_from_content": 53,
+    "converters_core/extract_tool_uses_from_message": 34,
+    "converters_core/get_thinking_system_prompt_addition": 3,
+    "converters_core/get_truncation_recovery_system_addition": 4,
+    "converters_core/inject_thinking_tags": 55,
+    "converters_core/merge_adjacent_messages": 41,
+    "converters_core/normalize_message_roles": 42,
+    "converters_core/process_tools_with_long_descriptions": 30,
+    "converters_core/sanitize_json_schema": 25,
+    "converters_core/strip_all_tool_content": 44,
+    "converters_core/tool_calls_to_text": 22,
+    "converters_core/tool_results_to_text": 29,
+    "converters_core/validate_tool_names": 25,
+    "converters_openai/build_kiro_payload": {
+      "min": 38,
+      "reason": "punto de entrada de la fase 3 por el lado de OpenAI; sin estos casos la fase 3 se valida a ciegas"
+    },
+    "converters_openai/convert_openai_messages_to_unified": {
+      "min": 31,
+      "reason": "entrada list[ChatMessage]; normaliza el formato de OpenAI al interno y alimenta todo lo demas"
+    },
+    "converters_openai/convert_openai_tools_to_unified": 25,
+    "converters_openai/extract_thinking_config_from_openai": {
+      "min": 37,
+      "reason": "entrada ChatCompletionRequest; unica fuente golden de como se deriva la configuracion de thinking"
+    },
+    "converters_openai/reasoning_effort_to_budget": 10,
+    "kiro_errors/enhance_kiro_error": 21,
+    "model_resolver/extract_model_family": 14,
+    "model_resolver/normalize_model_name": 40,
+    "model_resolver/to_runtime_model_id": 15,
+    "network_errors/classify_network_error": {
+      "min": 27,
+      "reason": "unica fuente golden de la correspondencia tipo de excepcion (y su causa encadenada) -> categoria de error de red"
+    },
+    "network_errors/format_error_for_user": 4,
+    "network_errors/get_short_error_message": 9,
+    "parsers/AwsEventStreamParser": 22,
+    "parsers/deduplicate_tool_calls": 19,
+    "parsers/find_matching_brace": 39,
+    "parsers/parse_bracket_tool_calls": {
+      "min": 11,
+      "reason": "parseo de llamadas a herramientas en texto; logica con muchos casos borde"
+    },
+    "payload_guards/check_payload_size": 27,
+    "payload_guards/trim_payload_to_limit": 8,
+    "streaming_anthropic/format_sse_event": {
+      "min": 83,
+      "reason": "formateo de eventos SSE de Anthropic; la fase 5 se valida contra estos casos"
+    },
+    "streaming_anthropic/stream_kiro_to_anthropic": {
+      "min": 20,
+      "reason": "generador de streaming de Anthropic; unica fuente golden de la secuencia de eventos"
+    },
+    "streaming_openai/stream_kiro_to_openai_internal": {
+      "min": 40,
+      "reason": "generador de streaming de OpenAI; unica fuente golden de la secuencia de chunks"
+    },
+    "thinking_parser/ThinkingParser": 49,
+    "tokenizer/count_message_tokens": 43,
+    "tokenizer/count_system_tokens": 19,
+    "tokenizer/count_tokens": 136,
+    "tokenizer/count_tools_tokens": 28,
+    "tokenizer/estimate_request_tokens": 29,
+    "truncation_recovery/generate_truncation_tool_result": 13,
+    "truncation_recovery/generate_truncation_user_message": 2,
+    "truncation_recovery/should_inject_recovery": 2,
+    "utils/generate_conversation_id": 1
+  },
+  "_known_empty_comment": [
+    "Objetivos declarados en targets.py que graban CERO casos, con su causa. Estan",
+    "aqui para que validate.py distinga 'vacio conocido y documentado' de 'objetivo",
+    "que acaba de perder todos sus casos', que antes eran indistinguibles.",
+    "",
+    "HOY ESTA VACIO, y eso es lo correcto: los seis objetivos que estaban aqui se",
+    "recuperaron en la ronda de arreglo 6 al ensenar al grabador a serializar modelos",
+    "pydantic y excepciones. Todos los objetivos declarados graban casos.",
+    "",
+    "El mecanismo se queda por si un objetivo futuro vuelve a quedarse a cero: meterlo",
+    "aqui exige escribir la causa, que es lo unico que distingue un vacio entendido de",
+    "una regresion silenciosa. Antes de anadir una entrada, comprueba en",
+    "testdata/_report.json si la causa es 'nadie lo llama' o 'el grabador descarta la",
+    "llamada'; lo segundo se arregla en el grabador, no se documenta aqui."
+  ],
+  "known_empty_targets": {},
+  "_known_conflicting_comment": [
+    "OBJETIVOS CON CONFLICTOS DE SALIDA DECLARADOS.",
+    "",
+    "Un conflicto es una entrada a la que el upstream contesto con dos salidas",
+    "distintas (recorder.py, cabecera de _write). validate.py FALLA si un objetivo",
+    "conflictivo no esta aqui, y falla siempre si el conflicto es de conducta,",
+    "que no se puede declarar: hay que completar la entrada grabada o retirar el",
+    "objetivo. Aqui solo caben los 'identifier_only', en los que las salidas se",
+    "reconcilian al normalizar los identificadores generados.",
+    "",
+    "Cada entrada lleva la clase, la causa, y QUE TIENE QUE HACER LA FASE que use",
+    "ese objetivo. Sin ese ultimo campo, declarar el conflicto solo lo silencia."
+  ],
+  "known_conflicting_targets": {
+    "streaming_openai/stream_kiro_to_openai_internal": {
+      "kind": "identifier_only",
+      "reason": "el id de completion (chatcmpl-...) sale de un contador global de sesion, asi que dos llamadas con los mismos eventos emiten el mismo stream con distinto id",
+      "phase2": "la fase 5 tiene que inyectar el generador de ids en el port y comparar contra el id que trae el caso, o normalizar chatcmpl-<hex> en los dos lados antes de comparar. Comparar bytes sin hacer ninguna de las dos cosas falla por el id, no por el port"
+    },
+    "streaming_anthropic/stream_kiro_to_anthropic": {
+      "kind": "identifier_only",
+      "reason": "igual que el de OpenAI, con msg_..., sig_... y toolu_..., todos de contadores globales de sesion",
+      "phase2": "misma regla: inyectar los generadores de id en el port, o normalizar msg_<hex>, sig_<hex> y toolu_<hex> antes de comparar"
+    },
+    "utils/generate_conversation_id": {
+      "kind": "identifier_only",
+      "reason": "los cuatro sitios del upstream que la llaman (routes_openai:323,571 y routes_anthropic:376,684) la llaman SIN mensajes, asi que la unica rama que la suite ejecuta es la de respaldo, que devuelve un uuid4. El grabador hace uuid4 determinista, de modo que las 45 llamadas comparten entrada vacia y devuelven uuids distintos",
+      "phase2": "el unico caso grabado fija un uuid4 concreto: hay que comprobar la FORMA (que sea un uuid4 valido), no el valor. La rama del hash estable de los mensajes NO tiene cobertura golden porque el upstream nunca la ejecuta; hay que portarla con tests escritos a mano a partir del algoritmo (kiro/utils.py:102-150)"
+    }
+  }
+}

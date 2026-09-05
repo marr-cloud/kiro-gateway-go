@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:estimate_request_tokens", "kind": "function", "input": {"args": [], "kwargs": {"messages": [{"role": "user", "content": "What's the weather?"}], "tools": null, "system_prompt": null, "apply_claude_correction": true}}, "output": {"messages_tokens": 14, "tools_tokens": 0, "system_tokens": 0, "total_tokens": 14}, "recorded_at_commit": "a5292ca"}

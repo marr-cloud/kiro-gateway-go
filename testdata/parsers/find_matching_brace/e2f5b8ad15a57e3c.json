@@ -1,0 +1,1 @@
+{"target": "kiro.parsers:find_matching_brace", "kind": "function", "input": {"args": ["{\"name\":\"func2\",\"toolUseId\":\"call_2\"}", 0], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": true}}, "output": 36, "recorded_at_commit": "a5292ca"}

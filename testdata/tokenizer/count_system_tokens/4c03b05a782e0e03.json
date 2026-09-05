@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_system_tokens", "kind": "function", "input": {"args": ["You are a helpful assistant that answers questions about programming and software engineering."], "kwargs": {"apply_claude_correction": true}}, "output": 16, "recorded_at_commit": "a5292ca"}

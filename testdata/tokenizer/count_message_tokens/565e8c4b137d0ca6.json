@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_message_tokens", "kind": "function", "input": {"args": [[{"role": "user", "content": "请先读取项目结构，再回答。"}]], "kwargs": {"apply_claude_correction": false}}, "output": 21, "recorded_at_commit": "a5292ca"}

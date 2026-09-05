@@ -1,0 +1,1 @@
+{"target": "kiro.model_resolver:to_runtime_model_id", "kind": "function", "input": {"args": ["AUTO-KIRO"], "kwargs": {}}, "output": "AUTO-KIRO", "recorded_at_commit": "a5292ca"}

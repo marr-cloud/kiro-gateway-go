@@ -1,0 +1,1 @@
+{"target": "kiro.kiro_errors:enhance_kiro_error", "kind": "function", "input": {"args": [{"message": "Improperly formed request.", "reason": "VALIDATION_ERROR"}], "kwargs": {}}, "output": {"reason": "VALIDATION_ERROR", "user_message": "Improperly formed request. (reason: VALIDATION_ERROR)", "original_message": "Improperly formed request."}, "recorded_at_commit": "a5292ca"}

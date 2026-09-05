@@ -1,0 +1,1 @@
+{"target": "kiro.model_resolver:normalize_model_name", "kind": "function", "input": {"args": ["claude-3-0-opus"], "kwargs": {}}, "output": "claude-3.0-opus", "recorded_at_commit": "a5292ca"}

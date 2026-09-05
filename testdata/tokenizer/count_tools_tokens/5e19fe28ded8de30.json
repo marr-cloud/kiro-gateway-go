@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tools_tokens", "kind": "function", "input": {"args": [[{"type": "function", "function": {"name": "func", "description": "", "parameters": {"type": "object", "properties": {}}}}]], "kwargs": {}}, "output": 18, "recorded_at_commit": "a5292ca"}

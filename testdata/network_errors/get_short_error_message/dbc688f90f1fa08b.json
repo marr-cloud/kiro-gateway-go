@@ -1,0 +1,1 @@
+{"target": "kiro.network_errors:get_short_error_message", "kind": "function", "input": {"args": [{"category": "unknown", "user_message": "Unknown", "troubleshooting_steps": [], "technical_details": "Tech", "is_retryable": true, "suggested_http_code": 502}], "kwargs": {}}, "output": "Unknown", "recorded_at_commit": "a5292ca"}

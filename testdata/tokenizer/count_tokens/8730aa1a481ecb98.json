@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tokens", "kind": "function", "input": {"args": ["你是代码助手。"], "kwargs": {"apply_claude_correction": false}}, "output": 7, "recorded_at_commit": "a5292ca"}

@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+      - name: Comprobar formato
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "ficheros sin formatear:"; echo "$out"; exit 1; fi
+      - name: Vet
+        run: go vet ./...
+      - name: Tests
+        run: go test ./... -count=1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Validar el corpus golden
+        # validate.py solo necesita la biblioteca estandar y tools/corpus/targets.py:
+        # no hace falta clonar el upstream ni crear su venv. Sin este paso,
+        # floors.json, la comprobacion de recorded_at_commit caso a caso, la politica
+        # de conflictos de salida y la correspondencia con targets.py no protegian
+        # ningun cambio, porque nadie los ejecutaba.
+        env:
+          PYTHONPATH: tools/corpus
+        run: python tools/corpus/validate.py testdata
+      - name: Cabecera de licencia en todos los ficheros Go
+        run: |
+          missing=0
+          for f in $(git ls-files '*.go'); do
+            head -1 "$f" | grep -q 'SPDX-License-Identifier: AGPL-3.0-or-later' || { echo "falta cabecera: $f"; missing=1; }
+          done
+          exit $missing
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - { goos: windows, goarch: amd64 }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+      - name: Compilar ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -o /dev/null ./cmd/kiro-gateway

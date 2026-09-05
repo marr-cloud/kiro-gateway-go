@@ -1,0 +1,1 @@
+{"target": "kiro.network_errors:get_short_error_message", "kind": "function", "input": {"args": [{"category": "dns_resolution", "user_message": "DNS resolution failed", "troubleshooting_steps": [], "technical_details": "Technical info", "is_retryable": true, "suggested_http_code": 502}], "kwargs": {}}, "output": "DNS resolution failed", "recorded_at_commit": "a5292ca"}

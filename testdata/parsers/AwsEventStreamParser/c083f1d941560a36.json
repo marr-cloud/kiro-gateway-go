@@ -1,0 +1,1 @@
+{"target": "kiro.parsers:AwsEventStreamParser", "kind": "sequence", "steps": [{"method": "__init__", "input": {"args": [], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": true}}, "output": null}, {"method": "feed", "input": {"args": [{"__bytes__": "eyJjb250ZW50IjoiSGVs"}], "kwargs": {}}, "output": []}], "recorded_at_commit": "a5292ca"}

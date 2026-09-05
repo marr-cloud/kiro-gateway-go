@@ -1,0 +1,1 @@
+{"target": "kiro.parsers:find_matching_brace", "kind": "function", "input": {"args": ["\n        [Called get_weather with args: {\"location\": \"Moscow\"}]\n        Some text in between\n        [Called get_time with args: {\"timezone\": \"UTC\"}]\n        ", 40], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": true}}, "output": 61, "recorded_at_commit": "a5292ca"}

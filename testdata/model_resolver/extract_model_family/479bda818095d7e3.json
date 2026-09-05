@@ -1,0 +1,1 @@
+{"target": "kiro.model_resolver:extract_model_family", "kind": "function", "input": {"args": ["claude-opus-4.5"], "kwargs": {}}, "output": "opus", "recorded_at_commit": "a5292ca"}

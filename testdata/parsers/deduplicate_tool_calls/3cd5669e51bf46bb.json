@@ -1,0 +1,1 @@
+{"target": "kiro.parsers:deduplicate_tool_calls", "kind": "function", "input": {"args": [[{"id": "call_1", "type": "function", "function": {"name": "func", "arguments": "{}"}}]], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": true}}, "output": [{"id": "call_1", "type": "function", "function": {"name": "func", "arguments": "{}"}}], "recorded_at_commit": "a5292ca"}

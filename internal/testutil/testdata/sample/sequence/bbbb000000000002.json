@@ -1,0 +1,10 @@
+{
+  "target": "kiro.sample:Accumulator",
+  "kind": "sequence",
+  "steps": [
+    {"method": "__init__", "input": {"args": [], "kwargs": {"sep": ""}, "config": {"FAKE_REASONING_HANDLING": "as_reasoning_content"}}, "output": null},
+    {"method": "feed", "input": {"args": [{"__bytes__": "aGk="}], "kwargs": {}}, "output": ["hi"]},
+    {"method": "finalize", "input": {"args": [], "kwargs": {}}, "output": "hi"}
+  ],
+  "recorded_at_commit": "a5292ca"
+}

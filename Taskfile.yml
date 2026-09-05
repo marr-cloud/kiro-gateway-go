@@ -1,0 +1,203 @@
+version: '3'
+
+vars:
+  BINARY: kiro-gateway
+  MODULE: github.com/marr-cloud/kiro-gateway-go
+  UPSTREAM_REPO: https://github.com/jwadow/kiro-gateway.git
+  UPSTREAM_COMMIT: a5292ca
+  # Criterio de intérpretes de Python: nunca `python` desnudo, siempre una de estas
+  # dos variables, elegida por la dependencia real del comando.
+  #   PY      -> intérprete del venv del upstream (3.10 con las dependencias del
+  #              lockfile). Lo usa TODO el utillaje del corpus, incluidos validate.py
+  #              y snapshot.py, para que la generación y la validación nunca dependan
+  #              de qué Python haya en el PATH.
+  #   PY_HOST -> Python del PATH. Solo para tareas que no deben exigir el venv, como
+  #              `clean`, que tiene que funcionar sin haber clonado el upstream.
+  # Ruta absoluta a proposito: con `dir` a nivel de comando, Task no usa ese
+  # directorio para resolver un ejecutable relativo y el comando sale con 127.
+  PY: '{{.TASKFILE_DIR}}/.upstream/{{if eq OS "windows"}}.venv/Scripts/python.exe{{else}}.venv/bin/python{{end}}'
+  PY_HOST: python
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+
+env:
+  CGO_ENABLED: '0'
+
+tasks:
+  default:
+    cmds: [task: test]
+
+  build:
+    desc: Compila el binario para la plataforma actual
+    cmds:
+      - go build -trimpath -ldflags "-s -w -X {{.MODULE}}/internal/version.build={{.VERSION}}" -o {{.BINARY}}{{exeExt}} ./cmd/kiro-gateway
+
+  test:
+    desc: Ejecuta todos los tests
+    cmds:
+      - go test ./...
+
+  test:verbose:
+    desc: Ejecuta todos los tests con salida detallada
+    cmds:
+      - go test ./... -v
+
+  lint:
+    desc: Comprueba formato y errores estáticos
+    cmds:
+      - go vet ./...
+      - cmd: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "ficheros sin formatear:"; echo "$out"; exit 1; fi
+
+  fmt:
+    desc: Formatea todo el código Go
+    cmds:
+      - gofmt -w .
+
+  clean:
+    desc: Borra artefactos de compilación
+    cmds:
+      - '{{.PY_HOST}} -c "import pathlib; [p.unlink() for p in pathlib.Path(''.'').glob(''kiro-gateway*'') if p.is_file()]"'
+      - go clean -cache -testcache
+
+  corpus:setup:
+    desc: Clona el upstream en el commit fijado y prepara el entorno Python 3.10
+    status:
+      - test -d .upstream/.git
+      - test -d .upstream/.venv
+    cmds:
+      - cmd: git clone {{.UPSTREAM_REPO}} .upstream
+        ignore_error: true
+      - git -C .upstream fetch --all --tags
+      - git -C .upstream checkout --force {{.UPSTREAM_COMMIT}}
+      - git -C .upstream clean -fd
+      - uv venv --python 3.10 .upstream/.venv
+      # SE INSTALA DEL LOCKFILE, NO DE pyproject.toml.
+      # pyproject.toml solo pinea pytest y pytest-asyncio, y el corpus depende de
+      # mas versiones que esas dos: pydantic determina la forma de las entradas
+      # grabadas (model_dump) y tiktoken determina las salidas de los cinco
+      # objetivos del tokenizer (>170 casos). Resolviendo en cada maquina, el
+      # corpus dejaba de ser reproducible. Para cambiar dependencias a proposito:
+      # `task corpus:relock`.
+      - uv pip install --python .upstream/.venv -r tools/corpus/requirements.lock
+
+  corpus:relock:
+    desc: Reresuelve las dependencias desde pyproject.toml y reescribe el lockfile
+    cmds:
+      - uv pip install --python .upstream/.venv -r tools/corpus/pyproject.toml
+      - uv pip freeze --python .upstream/.venv > tools/corpus/requirements.lock
+
+  corpus:record:
+    desc: Ejecuta la suite del upstream con el grabador y genera testdata/
+    deps: [corpus:setup]
+    # dir y env van a nivel de tarea: a nivel de comando Task los ignora en
+    # silencio, y el grabador se quedaba sin PYTHONPATH.
+    dir: .upstream
+    env:
+      CORPUS_OUT: '{{.TASKFILE_DIR}}/testdata'
+      CORPUS_COMMIT: '{{.UPSTREAM_COMMIT}}'
+      PYTHONPATH: '{{.TASKFILE_DIR}}/tools/corpus'
+      PYTHONHASHSEED: '0'
+      TZ: UTC
+      # Neutraliza opciones heredadas del entorno que podrian reordenar, filtrar o
+      # paralelizar la suite (-k, --lf, -n auto...). El orden importa: ver abajo.
+      PYTEST_ADDOPTS: ''
+      # ---------------------------------------------------------------------
+      # CONFIGURACION DEL UPSTREAM FIJADA DE FORMA EXPLICITA
+      # ---------------------------------------------------------------------
+      # kiro/config.py llama a load_dotenv() al importarse y deriva sus valores de
+      # variables de entorno. Ningun .env esta versionado, asi que sin fijar esto
+      # el corpus dependia del entorno de quien lo generase: una ENTRADA OCULTA.
+      # Los valores son los POR DEFECTO del upstream en a5292ca, asi que fijarlos
+      # no cambia el corpus; lo que hace es dejar de depender del azar. Como
+      # load_dotenv() no sobreescribe variables ya definidas, esto tambien gana a
+      # cualquier .env que aparezca. El grabador ademas aborta si encuentra un
+      # .env en el camino de busqueda, y vuelca la huella de los valores efectivos
+      # en la seccion `config` de testdata/_report.json.
+      SERVER_HOST: '0.0.0.0'
+      SERVER_PORT: '8000'
+      PROXY_API_KEY: 'my-super-secret-password-123'
+      VPN_PROXY_URL: ''
+      REFRESH_TOKEN: ''
+      PROFILE_ARN: ''
+      KIRO_REGION: 'us-east-1'
+      KIRO_CREDS_FILE: ''
+      KIRO_CLI_DB_FILE: ''
+      SQLITE_READONLY: 'false'
+      TOOL_DESCRIPTION_MAX_LENGTH: '10000'
+      TRUNCATION_RECOVERY: 'true'
+      LOG_LEVEL: 'INFO'
+      FIRST_TOKEN_TIMEOUT: '15'
+      STREAMING_READ_TIMEOUT: '300'
+      FIRST_TOKEN_MAX_RETRIES: '3'
+      DEBUG_MODE: 'off'
+      DEBUG_DIR: 'debug_logs'
+      FAKE_REASONING: 'true'
+      FAKE_REASONING_MAX_TOKENS: '4000'
+      FAKE_REASONING_BUDGET_CAP: '10000'
+      FAKE_REASONING_HANDLING: 'as_reasoning_content'
+      FAKE_REASONING_INITIAL_BUFFER_SIZE: '20'
+      KIRO_MAX_PAYLOAD_BYTES: '600000'
+      AUTO_TRIM_PAYLOAD: 'false'
+      WEB_SEARCH_ENABLED: 'true'
+      ACCOUNT_SYSTEM: 'false'
+      ACCOUNTS_CONFIG_FILE: 'credentials.json'
+      ACCOUNTS_STATE_FILE: 'state.json'
+      ACCOUNT_RECOVERY_TIMEOUT: '60'
+      ACCOUNT_MAX_BACKOFF_MULTIPLIER: '1440.0'
+      ACCOUNT_PROBABILISTIC_RETRY_CHANCE: '0.1'
+      ACCOUNT_CACHE_TTL: '43200'
+      STATE_SAVE_INTERVAL_SECONDS: '10'
+    cmds:
+      - '{{.PY}} -c "import shutil, sys; shutil.rmtree(sys.argv[1], ignore_errors=True)" ''{{.TASKFILE_DIR}}/testdata'''
+      # EL ORDEN DE LA SUITE ES PARTE DEL CONTRATO DEL CORPUS.
+      # Los identificadores deterministas salen de contadores globales de sesion,
+      # asi que su valor depende de cuantos tests se ejecutaron antes. Por eso:
+      #   - se ejecuta SIEMPRE la suite completa, sin -k ni --lf ni rutas sueltas:
+      #     grabar un subconjunto produce identificadores distintos y un corpus que
+      #     no se puede comparar con el commiteado;
+      #   - se bloquean los plugins que aleatorizan o paralelizan el orden, aunque
+      #     hoy no esten instalados (los plugins instalados son anyio y asyncio, que
+      #     no reordenan), para que instalarlos manana no cambie el corpus en
+      #     silencio;
+      #   - recorder.py impone ademas su propio orden canonico con trylast, que gana
+      #     al de cualquier plugin y al de cualquier version de pytest.
+      - cmd: '{{.PY}} -m pytest -q -p recorder -p no:randomly -p no:random_order -p no:xdist'
+        ignore_error: true
+
+  corpus:
+    desc: Regenera el corpus golden completo desde el upstream fijado
+    cmds:
+      - task: corpus:record
+      - task: corpus:validate
+
+  corpus:validate:
+    desc: Valida la estructura, el tamano y los minimos del corpus
+    cmds:
+      - '{{.PY}} tools/corpus/validate.py testdata'
+
+  corpus:verify-deterministic:
+    desc: Genera el corpus dos veces y comprueba que sale idéntico
+    cmds:
+      - task: corpus:record
+      - task: corpus:validate
+      - '{{.PY}} tools/corpus/snapshot.py save testdata .corpus-check/gen1'
+      # defer: borra la copia temporal aunque la comparacion falle.
+      - defer: '{{.PY}} tools/corpus/snapshot.py drop .corpus-check'
+      - task: corpus:record
+      - task: corpus:validate
+      - '{{.PY}} tools/corpus/snapshot.py compare .corpus-check/gen1 testdata'
+
+  corpus:verify-deterministic-3:
+    desc: Genera el corpus tres veces y compara las tres instantáneas por objetivo
+    cmds:
+      - task: corpus:record
+      - '{{.PY}} tools/corpus/snapshot.py save testdata .corpus-check/gen1'
+      - defer: '{{.PY}} tools/corpus/snapshot.py drop .corpus-check'
+      - task: corpus:record
+      - '{{.PY}} tools/corpus/snapshot.py save testdata .corpus-check/gen2'
+      - task: corpus:record
+      - '{{.PY}} tools/corpus/snapshot.py save testdata .corpus-check/gen3'
+      - '{{.PY}} tools/corpus/snapshot.py variance .corpus-check/gen1 .corpus-check/gen2 .corpus-check/gen3'
+      - task: corpus:validate

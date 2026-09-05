@@ -1,0 +1,1 @@
+{"target": "kiro.parsers:find_matching_brace", "kind": "function", "input": {"args": ["{\"contextUsagePercentage\":25.5}", 0], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": true}}, "output": 30, "recorded_at_commit": "a5292ca"}

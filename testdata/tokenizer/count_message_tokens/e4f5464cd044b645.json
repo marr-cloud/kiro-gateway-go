@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_message_tokens", "kind": "function", "input": {"args": [[{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}}]}]], "kwargs": {}}, "output": 131, "recorded_at_commit": "a5292ca"}

@@ -1,0 +1,1 @@
+{"target": "kiro.network_errors:get_short_error_message", "kind": "function", "input": {"args": [{"category": "timeout_connect", "user_message": "Timeout", "troubleshooting_steps": [], "technical_details": "Tech", "is_retryable": true, "suggested_http_code": 504}], "kwargs": {}}, "output": "Timeout", "recorded_at_commit": "a5292ca"}

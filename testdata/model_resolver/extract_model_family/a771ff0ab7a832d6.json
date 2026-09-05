@@ -1,0 +1,1 @@
+{"target": "kiro.model_resolver:extract_model_family", "kind": "function", "input": {"args": ["fast"], "kwargs": {}}, "output": null, "recorded_at_commit": "a5292ca"}

@@ -1,0 +1,1 @@
+{"target": "kiro.account_errors:classify_error", "kind": "function", "input": {"args": [400, "CONTENT_LENGTH_EXCEEDS_THRESHOLD"], "kwargs": {}}, "output": "fatal", "recorded_at_commit": "a5292ca"}

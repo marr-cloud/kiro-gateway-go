@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_message_tokens", "kind": "function", "input": {"args": [[{"role": "user", "content": "What's the weather?"}]], "kwargs": {"apply_claude_correction": false}}, "output": 13, "recorded_at_commit": "a5292ca"}

@@ -1,0 +1,1 @@
+{"target": "kiro.kiro_errors:enhance_kiro_error", "kind": "function", "input": {"args": [{"message": "An error occurred."}], "kwargs": {}}, "output": {"reason": "UNKNOWN", "user_message": "An error occurred.", "original_message": "An error occurred."}, "recorded_at_commit": "a5292ca"}

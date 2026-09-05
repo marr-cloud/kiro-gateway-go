@@ -1,0 +1,1 @@
+{"target": "kiro.kiro_errors:enhance_kiro_error", "kind": "function", "input": {"args": [{"message": "Error.", "reason": "content_length_exceeds_threshold"}], "kwargs": {}}, "output": {"reason": "content_length_exceeds_threshold", "user_message": "Error. (reason: content_length_exceeds_threshold)", "original_message": "Error."}, "recorded_at_commit": "a5292ca"}

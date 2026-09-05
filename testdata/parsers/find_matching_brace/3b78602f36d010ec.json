@@ -1,0 +1,1 @@
+{"target": "kiro.parsers:find_matching_brace", "kind": "function", "input": {"args": ["\n        [Called func with args: {\"a\": 1}]\n        [Called func with args: {\"a\": 1}]\n        ", 75], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": true}}, "output": 82, "recorded_at_commit": "a5292ca"}

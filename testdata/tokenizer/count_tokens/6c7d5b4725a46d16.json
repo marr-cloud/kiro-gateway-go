@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tokens", "kind": "function", "input": {"args": ["This response was cut off mid-sentence because"], "kwargs": {}}, "output": 10, "recorded_at_commit": "a5292ca"}

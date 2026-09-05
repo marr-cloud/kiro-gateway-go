@@ -1,0 +1,1 @@
+{"target": "kiro.model_resolver:normalize_model_name", "kind": "function", "input": {"args": ["unknown-model"], "kwargs": {}}, "output": "unknown-model", "recorded_at_commit": "a5292ca"}

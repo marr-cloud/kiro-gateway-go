@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tokens", "kind": "function", "input": {"args": ["Truncated response"], "kwargs": {}}, "output": 3, "recorded_at_commit": "a5292ca"}

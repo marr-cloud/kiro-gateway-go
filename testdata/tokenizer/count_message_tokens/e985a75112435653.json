@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_message_tokens", "kind": "function", "input": {"args": [[]], "kwargs": {}}, "output": 0, "recorded_at_commit": "a5292ca"}

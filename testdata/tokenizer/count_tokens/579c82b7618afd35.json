@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tokens", "kind": "function", "input": {"args": ["Привет, мир! 你好世界 🌍"], "kwargs": {}}, "output": 18, "recorded_at_commit": "a5292ca"}

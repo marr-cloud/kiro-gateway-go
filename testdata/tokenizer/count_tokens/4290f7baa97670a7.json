@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_tokens", "kind": "function", "input": {"args": ["This is a test text for checking the correction factor"], "kwargs": {"apply_claude_correction": true}}, "output": 11, "recorded_at_commit": "a5292ca"}

@@ -1,0 +1,1 @@
+{"target": "kiro.model_resolver:to_runtime_model_id", "kind": "function", "input": {"args": ["claude-haiku-4.6"], "kwargs": {}}, "output": "claude-haiku-4.6", "recorded_at_commit": "a5292ca"}

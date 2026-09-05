@@ -1,0 +1,1 @@
+{"target": "kiro.parsers:parse_bracket_tool_calls", "kind": "function", "input": {"args": ["This is just regular text without any tool calls."], "kwargs": {}, "config": {"TRUNCATION_RECOVERY": true}}, "output": [], "recorded_at_commit": "a5292ca"}

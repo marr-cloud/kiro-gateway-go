@@ -1,0 +1,1 @@
+{"target": "kiro.tokenizer:count_message_tokens", "kind": "function", "input": {"args": [[{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}, {"role": "user", "content": "How are you?"}]], "kwargs": {"apply_claude_correction": false}}, "output": 26, "recorded_at_commit": "a5292ca"}
