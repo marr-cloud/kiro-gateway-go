@@ -8,8 +8,8 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | Módulo Python | Paquete Go | Ficheros Go |
 |---|---|---|
 | `main.py` | `cmd/kiro-gateway` + `internal/server` | `cmd/kiro-gateway/main.go` |
-| `config.py` | `internal/config` | |
-| `utils.py` | `internal/utils` | |
+| `config.py` | `internal/config` | `config.go`, `parse.go`, `dotenv.go` |
+| `utils.py` | `internal/utils` | `fingerprint.go`, `ids.go`, `headers.go` |
 | `tokenizer.py` | `internal/tokenizer` | |
 | `parsers.py` | `internal/parsers` | |
 | `thinking_parser.py` | `internal/thinkingparser` | |
@@ -18,10 +18,10 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `payload_guards.py` | `internal/payloadguards` | |
 | `cache.py` | `internal/cache` | |
 | `model_resolver.py` | `internal/modelresolver` | |
-| `kiro_errors.py` | `internal/kiroerrors` | |
-| `network_errors.py` | `internal/networkerrors` | |
-| `account_errors.py` | `internal/accounterrors` | |
-| `exceptions.py` | `internal/validationerrors` | |
+| `kiro_errors.py` | `internal/kiroerrors` | `enhance.go` |
+| `network_errors.py` | `internal/networkerrors` | `types.go`, `classify.go`, `messages.go` |
+| `account_errors.py` | `internal/accounterrors` | `classify.go` |
+| `exceptions.py` | `internal/validationerrors` | `validation.go` |
 | `models_openai.py` | `internal/modelsopenai` | |
 | `models_anthropic.py` | `internal/modelsanthropic` | |
 | `converters_core.py` | `internal/converterscore` | |

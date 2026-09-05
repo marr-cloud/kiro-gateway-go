@@ -143,6 +143,29 @@ func TestDecodeException(t *testing.T) {
 	}
 }
 
+// TestDecodeExceptionWrappedCause verifica el caso real que graba el recorder:
+// la causa lleva su propio marcador __exception__ (recursivo). Sin esto, la
+// rama de kiro.network_errors.classify_network_error que decide dns_resolution
+// mirando isinstance(err.__cause__, socket.gaierror) se pierde: Cause queda
+// no-nil pero con todos los campos vacíos.
+func TestDecodeExceptionWrappedCause(t *testing.T) {
+	raw := json.RawMessage(`{"__exception__":{"type":"ConnectError","module":"httpx","args":["Failed"],"str":"Failed",
+	  "cause":{"__exception__":{"type":"gaierror","module":"socket","args":[11001,"getaddrinfo failed"],"str":"[Errno 11001] getaddrinfo failed"}}}}`)
+	exc, err := DecodeException(raw)
+	if err != nil {
+		t.Fatalf("DecodeException: %v", err)
+	}
+	if exc.Cause == nil {
+		t.Fatal("Cause = nil, quiero la excepción encadenada")
+	}
+	if exc.Cause.Type != "gaierror" || exc.Cause.Module != "socket" {
+		t.Errorf("Cause.Type/Module = %q/%q, quiero gaierror/socket", exc.Cause.Type, exc.Cause.Module)
+	}
+	if len(exc.Cause.Args) != 2 || string(exc.Cause.Args[0]) != "11001" {
+		t.Errorf("Cause.Args = %v, quiero [11001, ...]", exc.Cause.Args)
+	}
+}
+
 func TestExceptionHelpersRejectPlainValues(t *testing.T) {
 	if IsException(json.RawMessage(`{"type":"ConnectError"}`)) {
 		t.Error("IsException = true para un objeto sin marcador")

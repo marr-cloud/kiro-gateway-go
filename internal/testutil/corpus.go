@@ -164,12 +164,46 @@ func DecodeSet(raw json.RawMessage) ([]json.RawMessage, error) {
 // clasificadores que miran el mensaje, y Cause porque hay ramas que deciden por la
 // excepción encadenada (kiro.network_errors.classify_network_error mira
 // isinstance(err.__cause__, socket.gaierror) y saca el errno de sus args).
+//
+// El decodificador acepta las dos formas en que un valor Exception aparece en
+// el corpus: la envuelta {"__exception__": {...}} (la que graba el recorder,
+// tanto en el nivel raíz como en cada `cause` encadenada) y la plana con los
+// campos directos. Sin esto la cadena de causas se perdía: json.Unmarshal
+// dejaba Type/Module vacíos en la excepción encadenada porque los buscaba en
+// el nivel del wrapper, no dentro del marcador.
 type Exception struct {
 	Type   string            `json:"type"`
 	Module string            `json:"module"`
 	Args   []json.RawMessage `json:"args"`
 	Str    string            `json:"str"`
 	Cause  *Exception        `json:"cause,omitempty"`
+}
+
+// UnmarshalJSON deserializa una Exception aceptando ambas formas del corpus.
+// Se implementa aquí en vez de exponer un helper aparte para que la
+// desenvoltura funcione también en los campos anidados (Cause), donde
+// json.Unmarshal llama recursivamente al UnmarshalJSON del tipo.
+func (e *Exception) UnmarshalJSON(data []byte) error {
+	// Forma envuelta: {"__exception__": {campos}}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(data, &probe); err == nil {
+		if inner, ok := probe["__exception__"]; ok {
+			return e.decodeFields(inner)
+		}
+	}
+	return e.decodeFields(data)
+}
+
+// decodeFields deserializa los campos planos de una Exception, evitando la
+// recursión infinita en UnmarshalJSON con el truco del type alias.
+func (e *Exception) decodeFields(data []byte) error {
+	type alias Exception
+	var raw alias
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*e = Exception(raw)
+	return nil
 }
 
 // IsException dice si un valor crudo es una excepción codificada, sin fallar si no

@@ -91,6 +91,56 @@ encuentra. El README en inglés sigue siendo exhaustivo.
 
 ---
 
+### 7. Serialización de floats con magnitud grande en `pyjson`
+
+**Qué cambia:** `internal/pyjson/dumps.go` (y `str.go`) formatea los `float64` con `strconv` en
+formato `'g'` shortest. Para magnitudes grandes (aproximadamente `|v| >= 1e6`) Go conmuta a
+notación exponencial, mientras que `json.dumps` de Python conserva el decimal: `1000000.0` sale
+como `"1e+06"` en el port y como `"1000000.0"` en el original. Los floats con valor entero
+(`1.0`) y los pequeños coinciden byte por byte.
+
+**Por qué:** `strconv.FormatFloat` con precisión `-1` es el shortest round-trip de la stdlib de
+Go, y no hay API estándar para forzar el formato decimal que usa CPython sin reimplementar
+Grisu/Ryu. Escribir un formateador propio para un caso que hoy no tiene consumidor era coste sin
+beneficio.
+
+**Impacto:** ningún paquete de fase 2a lo consume. El primer usuario será el tokenizador de fase
+2b, que se valida contra el corpus golden: cualquier divergencia observable saltaría allí y se
+trataría entonces.
+
+---
+
+### 8. Escapes estilo python-dotenv en `.env`
+
+**Qué cambia:** `internal/config/dotenv.go` no interpreta las secuencias de escape (`\n`, `\t`,
+`\"`, `\\`, ...) dentro de valores entrecomillados que sí procesa `python-dotenv`. El port
+devuelve la cadena tal cual para todas las variables.
+
+**Por qué:** el port solo lee de `.env` dos rutas de credenciales (`KIRO_CREDS_FILE`,
+`KIRO_CLI_DB_FILE`), y en Windows esas rutas contienen backslashes que un intérprete de escapes
+convertiría en secuencias no deseadas. Leerlas en crudo es lo correcto para su único consumidor.
+
+**Impacto:** no observable en el corpus: el grabador aborta si detecta un `.env` en el camino de
+búsqueda. Un usuario que pusiera escapes intencionados en su `.env` los vería literales; se
+documenta para que fase 2b/3 no los reintroduzca por reflejo si extiende el parser.
+
+---
+
+### 9. Rutas de credenciales sin `filepath.Clean`
+
+**Qué cambia:** `internal/config/config.go` no pasa `KIRO_CREDS_FILE` ni `KIRO_CLI_DB_FILE` por
+`filepath.Clean`, a diferencia del original, que normaliza separadores al construir
+`str(Path(...))` en Windows.
+
+**Por qué:** `os.Open` acepta indistintamente `/` y `\` en Windows, la ruta se usa una sola vez
+para abrir el fichero, y `filepath.Clean` puede colapsar barras de forma que rompa prefijos UNC
+o rutas verbatim (`\\?\...`). Preservar el literal es más seguro que canonicalizarlo.
+
+**Impacto:** equivalente para `os.Open`. Si alguien loguea la ruta efectiva verá exactamente el
+valor que puso en el `.env`, no una versión saneada.
+
+---
+
 ## Comportamientos del original que se replican a propósito
 
 El upstream tiene cinco comportamientos que son defectos o atajos, pero **se replican a propósito
