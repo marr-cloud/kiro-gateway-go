@@ -206,3 +206,29 @@ tasks:
       - '{{.PY}} tools/corpus/snapshot.py save testdata .corpus-check/gen3'
       - '{{.PY}} tools/corpus/snapshot.py variance .corpus-check/gen1 .corpus-check/gen2 .corpus-check/gen3'
       - task: corpus:validate
+
+  tokenizer:vocab:
+    desc: Regenera internal/tokenizer/cl100k_base.tiktoken desde el tiktoken del venv fijado
+    # Se genera SIEMPRE desde el mismo tiktoken que grabó el corpus (venv del
+    # upstream), nunca descargando: así el vocabulario embebido coincide byte a
+    # byte con el que produjo los recuentos de referencia. El fichero de salida
+    # se commitea porque `go:embed` lo necesita en el árbol. Formato canónico
+    # de tiktoken: `base64(bytes del token) <espacio> rank`, ordenado por rango
+    # ascendente y terminado en LF. Aborta si el número de rangos no es 100256.
+    deps: [corpus:setup]
+    cmds:
+      - cmd: |
+          {{.PY}} - <<'PY'
+          import base64, pathlib, sys, tiktoken
+          enc = tiktoken.get_encoding("cl100k_base")
+          mr = enc._mergeable_ranks
+          if len(mr) != 100256:
+              print("cl100k_base tiene", len(mr), "entradas, se esperaban 100256", file=sys.stderr)
+              raise SystemExit(1)
+          out = pathlib.Path("internal/tokenizer/cl100k_base.tiktoken")
+          out.parent.mkdir(parents=True, exist_ok=True)
+          with out.open("w", newline="\n", encoding="ascii") as f:
+              for tok, rank in sorted(mr.items(), key=lambda kv: kv[1]):
+                  f.write(base64.b64encode(tok).decode("ascii") + " " + str(rank) + "\n")
+          print("escrito", out, "con", len(mr), "entradas")
+          PY

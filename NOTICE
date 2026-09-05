@@ -28,3 +28,16 @@ Cambios respecto al original
 - Documentación en inglés y español. El original la tiene en siete idiomas.
 
 La lista completa y actualizada está en docs/DIFFERENCES.md.
+
+Datos embebidos de terceros
+---------------------------
+
+- internal/tokenizer/cl100k_base.tiktoken procede de tiktoken de OpenAI
+  (https://github.com/openai/tiktoken, licencia MIT). Es el volcado canónico
+  de tiktoken.get_encoding("cl100k_base")._mergeable_ranks al formato
+  base64(bytes del token) <espacio> rank, ordenado por rango. Se genera con
+  `task tokenizer:vocab` desde la versión de tiktoken fijada en
+  tools/corpus/requirements.lock (tiktoken==0.14.0), la misma que grabó el
+  corpus golden. Se embebe con go:embed como dato funcional para reproducir
+  el conteo de tokens del original byte a byte; nunca se descarga en tiempo
+  de build ni de ejecución.
