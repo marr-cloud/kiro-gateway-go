@@ -17,8 +17,13 @@ vars:
   # directorio para resolver un ejecutable relativo y el comando sale con 127.
   PY: '{{.TASKFILE_DIR}}/.upstream/{{if eq OS "windows"}}.venv/Scripts/python.exe{{else}}.venv/bin/python{{end}}'
   PY_HOST: python
+  # Solo se inyecta una version cuando hay un tag que describa el commit. Sin
+  # tags, git describe --tags falla (a proposito, sin --always), VERSION queda
+  # vacia, y el binario reporta la version por defecto de internal/version, que
+  # es 2.4.dev.13+go. Con --always devolvia el SHA corto, y el binario reportaba
+  # un SHA en vez de una version, incumpliendo el criterio de aceptacion 1.
   VERSION:
-    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+    sh: git describe --tags --dirty 2>/dev/null || echo ""
 
 env:
   CGO_ENABLED: '0'
