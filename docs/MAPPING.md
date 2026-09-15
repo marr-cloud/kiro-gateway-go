@@ -22,8 +22,8 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `network_errors.py` | `internal/networkerrors` | `types.go`, `classify.go`, `messages.go` |
 | `account_errors.py` | `internal/accounterrors` | `classify.go` |
 | `exceptions.py` | `internal/validationerrors` | `validation.go` |
-| `models_openai.py` | `internal/modelsopenai` | |
-| `models_anthropic.py` | `internal/modelsanthropic` | |
+| `models_openai.py` | `internal/modelsopenai` | `models.go` |
+| `models_anthropic.py` | `internal/modelsanthropic` | `blocks.go`, `models.go` |
 | `converters_core.py` | `internal/converterscore` | |
 | `converters_openai.py` | `internal/convertersopenai` | |
 | `converters_anthropic.py` | `internal/convertersanthropic` | |
