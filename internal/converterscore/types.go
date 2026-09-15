@@ -33,12 +33,25 @@ type ThinkingConfig struct {
 // JSON: una cadena, una lista de bloques de contenido, o nil. Images sigue el
 // formato unificado que describe extract_images_from_content:
 // [{"media_type": "image/jpeg", "data": "base64..."}].
+//
+// Lleva tags json (Task 6, refinamiento sobre la declaración de Task 2) para
+// poder decodificar directamente los mensajes del corpus golden de
+// testdata/converters_core/{ensure_assistant_before_tool_results,
+// merge_adjacent_messages,ensure_first_message_is_user,
+// normalize_message_roles,ensure_alternating_roles}, que los graba con las
+// claves snake_case del dataclass original (role, content, tool_calls,
+// tool_results, images). omitempty en los tres slices opcionales sigue la
+// convención Go habitual para campos ausentes; no afecta a la decodificación
+// del corpus (donde esas claves siempre aparecen, aunque sea con valor
+// null) y los tests de normalize_test.go no dependen de esta struct para
+// serializar la salida que comparan, así que la comparación contra el
+// corpus no se ve afectada por omitirlos al codificar.
 type UnifiedMessage struct {
-	Role        string
-	Content     any
-	ToolCalls   []map[string]any
-	ToolResults []map[string]any
-	Images      []map[string]any
+	Role        string           `json:"role"`
+	Content     any              `json:"content"`
+	ToolCalls   []map[string]any `json:"tool_calls,omitempty"`
+	ToolResults []map[string]any `json:"tool_results,omitempty"`
+	Images      []map[string]any `json:"images,omitempty"`
 }
 
 // UnifiedTool es el formato de herramienta unificado, independiente de API.

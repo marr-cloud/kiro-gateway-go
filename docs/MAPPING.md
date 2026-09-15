@@ -24,7 +24,7 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `exceptions.py` | `internal/validationerrors` | `validation.go` |
 | `models_openai.py` | `internal/modelsopenai` | `models.go` |
 | `models_anthropic.py` | `internal/modelsanthropic` | `blocks.go`, `models.go` |
-| `converters_core.py` | `internal/converterscore` | `types.go`, `extract.go`, `text.go`, `tools.go`, `images.go` |
+| `converters_core.py` | `internal/converterscore` | `types.go`, `extract.go`, `text.go`, `tools.go`, `images.go`, `normalize.go` |
 | `converters_openai.py` | `internal/convertersopenai` | |
 | `converters_anthropic.py` | `internal/convertersanthropic` | |
 | `streaming_core.py` | `internal/streamingcore` | |
