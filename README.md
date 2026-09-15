@@ -5,8 +5,10 @@ Port a Go de [kiro-gateway](https://github.com/jwadow/kiro-gateway) como binario
 Un proxy local que expone las APIs de OpenAI y Anthropic y traduce las peticiones a la API de
 Kiro, de forma que cualquier cliente compatible con esas APIs pueda usar los modelos de Kiro.
 
-> **Estado:** en construcción. El binario todavía no sirve peticiones. Ver
-> `docs/superpowers/plans/` para el estado del port.
+> **Estado:** Fase 3 (modelos y converters) completada. El payload generado en Go es byte a byte
+> compatible con el original para 1 335 casos de corpus (21 descartados con prueba de defecto en
+> grabador). Frontera 1 de D1 cerrada. Próxima fase: transporte (Fase 4). Ver
+> `docs/superpowers/plans/` para más detalles del port.
 
 ## Licencia
 
