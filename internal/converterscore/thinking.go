@@ -51,6 +51,39 @@ var (
 	FakeReasoningBudgetCap = 10000
 	// TruncationRecoveryEnabled refleja kiro.config.TRUNCATION_RECOVERY.
 	TruncationRecoveryEnabled = true
+
+	// ToolDescriptionMaxLength, AutoTrimPayload y KiroMaxPayloadBytes
+	// (Task 8) se añaden al mismo mecanismo de "global mutable a nivel de
+	// paquete" que las cuatro variables anteriores, por la misma razón:
+	// kiro.converters_core:build_kiro_payload (.upstream/kiro/converters_core.py:1405-1597)
+	// los lee como globals de módulo, no como parámetros — el corpus de
+	// build_kiro_payload lo confirma: sus 83 casos llevan
+	// TOOL_DESCRIPTION_MAX_LENGTH, AUTO_TRIM_PAYLOAD y KIRO_MAX_PAYLOAD_BYTES
+	// dentro de input.config, nunca en input.kwargs.
+	//
+	// ToolDescriptionMaxLength es el que build_kiro_payload pasa a
+	// ProcessToolsWithLongDescriptions (tools.go, Task 4), que sí lo recibe
+	// como argumento explícito por decisión de esa tarea — Task 8 es quien
+	// tiene que proveer ese argumento, y lo saca de aquí. Valor por defecto
+	// 10000, igual que kiro.config.TOOL_DESCRIPTION_MAX_LENGTH; es el único
+	// valor que aparece en los 83 casos del corpus (no hay caso que lo
+	// varíe).
+	ToolDescriptionMaxLength = 10000
+
+	// AutoTrimPayload y KiroMaxPayloadBytes reflejan kiro.config.AUTO_TRIM_PAYLOAD
+	// y kiro.config.KIRO_MAX_PAYLOAD_BYTES. El original, al final de
+	// build_kiro_payload (líneas 1587-1596), usa AUTO_TRIM_PAYLOAD para
+	// decidir si recorta el payload con check_payload_size/trim_payload_to_limit
+	// de kiro.payload_guards cuando supera KIRO_MAX_PAYLOAD_BYTES. Ese módulo
+	// (internal/payloadguards en docs/MAPPING.md) está fuera del alcance de
+	// la Task 8 y no existe todavía en el port, así que BuildKiroPayload deja
+	// esa rama sin implementar a propósito — ver el comentario junto a su uso
+	// en payload.go. AUTO_TRIM_PAYLOAD es false en los 83 casos del corpus
+	// (nunca lo ejercitan), así que la ausencia de recorte no afecta a la
+	// paridad verificada por esta tarea. Valores por defecto iguales a
+	// kiro.config: false y 600000.
+	AutoTrimPayload     = false
+	KiroMaxPayloadBytes = 600000
 )
 
 // thinkingSystemPromptAddition es el literal que devuelve
