@@ -29,15 +29,34 @@ type URLImageSource struct {
 // los bytes originales en Raw y decodifica según el campo "type": "url" pasa
 // a URL, cualquier otro valor (en la práctica solo "base64") pasa a Base64,
 // replicando el orden del Union del original (Base64ImageSource primero).
+//
+// Base64ImageSource y URLImageSource se embeben SIN NOMBRE (campo anónimo) a
+// propósito, no solo por comodidad: es lo que hace que encoding/json
+// APLANE sus campos (media_type, data, url) directamente en el objeto JSON
+// de ImageSource al serializar, en vez de anidarlos bajo una clave
+// "Base64ImageSource"/"URLImageSource" que el wire de Anthropic no tiene. El
+// campo Type explícito, declarado a menos profundidad que los dos
+// embebidos, es lo que gana la resolución de "type" sin ambigüedad (los dos
+// tipos embebidos también declaran su propio "type", pero al estar más
+// profundos quedan ocultos por completo, no producen conflicto). Verificado
+// con un round-trip Unmarshal→Marshal→Unmarshal→Marshal que produce bytes
+// idénticos en las dos serializaciones (TestRoundTripImageSource).
+//
+// El precio de este truco: el campo ya no se llama Source.Base64 sino
+// Source.Base64ImageSource (el nombre de un campo anónimo es el nombre de su
+// tipo), aunque sus propios campos (MediaType, Data, URL) también quedan
+// promovidos y accesibles directamente como Source.MediaType, Source.Data,
+// Source.URL.
 type ImageSource struct {
-	Type   string
-	Base64 *Base64ImageSource
-	URL    *URLImageSource
-	Raw    json.RawMessage
+	Type               string `json:"type"`
+	*Base64ImageSource `json:",omitempty"`
+	*URLImageSource    `json:",omitempty"`
+	Raw                json.RawMessage `json:"-"`
 }
 
 // UnmarshalJSON decodifica un ImageSource preservando los bytes originales en
-// Raw y poblando Base64 o URL según el discriminador "type".
+// Raw y poblando Base64ImageSource o URLImageSource según el discriminador
+// "type".
 func (s *ImageSource) UnmarshalJSON(data []byte) error {
 	s.Raw = append(json.RawMessage(nil), data...)
 
@@ -54,7 +73,7 @@ func (s *ImageSource) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &u); err != nil {
 			return err
 		}
-		s.URL = &u
+		s.URLImageSource = &u
 		return nil
 	}
 
@@ -62,7 +81,7 @@ func (s *ImageSource) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &b); err != nil {
 		return err
 	}
-	s.Base64 = &b
+	s.Base64ImageSource = &b
 	return nil
 }
 
@@ -74,17 +93,17 @@ type ImageContentBlock struct {
 }
 
 // contentBlockAux es la forma auxiliar sobre la que ContentBlock.UnmarshalJSON
-// decodifica para leer "type" y todos los campos opcionales del original,
-// incluidos los que un ContentBlock unificado consolida en un único campo Go:
-// "name" (ToolUseContentBlock) y "tool_name" (ToolReferenceContentBlock) se
-// consolidan ambos en el campo Name del ContentBlock público, porque la
-// interfaz de este task no reserva un campo ToolName aparte.
+// decodifica para leer "type" y todos los campos opcionales del original. Sus
+// tags son la única fuente de verdad de las claves del wire al DEcodificar;
+// contentBlockAux nunca se serializa (solo se usa dentro de UnmarshalJSON),
+// así que no necesita objetear un ContentBlock: existe para que el
+// ContentBlock público no tenga que exponer una struct distinta por variante.
 type contentBlockAux struct {
 	Type      string          `json:"type"`
 	Text      *string         `json:"text,omitempty"`
 	Thinking  *string         `json:"thinking,omitempty"`
 	Signature *string         `json:"signature,omitempty"`
-	Name      *string         `json:"name,omitempty"`
+	Name      *string         `json:"name,omitempty"`      // ToolUseContentBlock
 	ToolName  *string         `json:"tool_name,omitempty"` // ToolReferenceContentBlock
 	Input     json.RawMessage `json:"input,omitempty"`
 	ID        *string         `json:"id,omitempty"`
@@ -102,33 +121,48 @@ type contentBlockAux struct {
 // switch sobre una interfaz), se aplana en un único struct con todos los
 // campos opcionales de todas las variantes, más Raw para no perder bytes que
 // el struct no modele explícitamente.
+//
+// Las tags json de cada campo son las claves reales del wire de Anthropic
+// (ver .upstream/kiro/models_anthropic.py) y son las que usa
+// encoding/json.Marshal para reemitir el bloque: sin ellas, Marshal produce
+// claves con el nombre Go capitalizado (Type, Text, ...) y además emite Raw
+// completo bajo una clave "Raw", duplicando el bloque. Name (de
+// ToolUseContentBlock) y ToolName (de ToolReferenceContentBlock) se dejan
+// como DOS campos separados, cada uno con su propia clave, en vez de
+// consolidarse en uno solo: un único campo Go no puede llevar dos tags json
+// distintas a la vez, y consolidarlos habría roto la reemisión de
+// tool_reference (habría reemitido "name" en vez de "tool_name"). Esto es un
+// cambio respecto a la primera versión de este fichero, que sí los
+// consolidaba; ver el informe de fix del task 1, ronda 1, para el porqué.
 type ContentBlock struct {
-	Type      string
-	Text      *string
-	Thinking  *string
-	Signature *string
-	Name      *string
-	Input     json.RawMessage
-	ID        *string
-	ToolUseID *string
-	Content   json.RawMessage
-	IsError   *bool
-	Source    *ImageSource
+	Type      string          `json:"type"`
+	Text      *string         `json:"text,omitempty"`
+	Thinking  *string         `json:"thinking,omitempty"`
+	Signature *string         `json:"signature,omitempty"`
+	Name      *string         `json:"name,omitempty"`      // ToolUseContentBlock
+	ToolName  *string         `json:"tool_name,omitempty"` // ToolReferenceContentBlock
+	Input     json.RawMessage `json:"input,omitempty"`
+	ID        *string         `json:"id,omitempty"`
+	ToolUseID *string         `json:"tool_use_id,omitempty"`
+	Content   json.RawMessage `json:"content,omitempty"`
+	IsError   *bool           `json:"is_error,omitempty"`
+	Source    *ImageSource    `json:"source,omitempty"`
 
 	// Raw conserva los bytes JSON originales del bloque, sin modificar. Sirve
-	// para reemitir un bloque que el struct aplanado no representa
-	// completamente (p.ej. campos desconocidos que "extra": "allow" acepta en
-	// el original) y para que los tests de discriminación puedan verificar
-	// que no se pierde ni un byte de la entrada.
-	Raw json.RawMessage
+	// para que un consumidor que necesite fidelidad byte a byte (p.ej. un
+	// campo desconocido que "extra": "allow" acepta en el original y que el
+	// struct aplanado no modela) pueda reemitir el bloque original en vez del
+	// que reconstruye Marshal a partir de los campos tipados. Lleva
+	// json:"-": NUNCA se serializa como parte del bloque — si lo hiciera,
+	// duplicaría el bloque entero bajo una clave "Raw" en la salida.
+	Raw json.RawMessage `json:"-"`
 }
 
 // UnmarshalJSON decodifica un ContentBlock:
 //  1. Guarda los bytes de entrada en Raw, sin modificar.
 //  2. Decodifica en la struct auxiliar contentBlockAux para leer "type" y
 //     todos los campos opcionales conocidos.
-//  3. Consolida esos campos en el ContentBlock público, incluida la fusión de
-//     "name"/"tool_name" en Name.
+//  3. Copia esos campos al ContentBlock público uno a uno.
 //
 // No falla si aparecen campos desconocidos: encoding/json los ignora al
 // decodificar en un struct por defecto, y quedan preservados en Raw para la
@@ -145,11 +179,8 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	b.Text = aux.Text
 	b.Thinking = aux.Thinking
 	b.Signature = aux.Signature
-	if aux.Name != nil {
-		b.Name = aux.Name
-	} else {
-		b.Name = aux.ToolName
-	}
+	b.Name = aux.Name
+	b.ToolName = aux.ToolName
 	b.Input = aux.Input
 	b.ID = aux.ID
 	b.ToolUseID = aux.ToolUseID
