@@ -25,7 +25,7 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `models_openai.py` | `internal/modelsopenai` | `models.go` |
 | `models_anthropic.py` | `internal/modelsanthropic` | `blocks.go`, `models.go` |
 | `converters_core.py` | `internal/converterscore` | `types.go`, `extract.go`, `text.go`, `tools.go`, `images.go`, `normalize.go`, `thinking.go`, `payload.go` |
-| `converters_openai.py` | `internal/convertersopenai` | |
+| `converters_openai.py` | `internal/convertersopenai` | `converters.go` |
 | `converters_anthropic.py` | `internal/convertersanthropic` | `converters.go` |
 | `streaming_core.py` | `internal/streamingcore` | |
 | `streaming_openai.py` | `internal/streamingopenai` | |
@@ -55,6 +55,19 @@ crear paquetes fuera de `internal/convertersanthropic/*`. Cuando una tarea
 futura implemente `internal/modelresolver`, debería sustituir ese subconjunto
 en `converters.go` por una llamada real a ese paquete en vez de mantener dos
 copias del mismo algoritmo.
+
+`internal/convertersopenai/converters.go` (Task 10) repite exactamente la
+misma duplicación, por la misma razón y con la misma restricción de alcance
+(Task 10 solo puede tocar `internal/convertersopenai/*` y este fichero):
+`build_kiro_payload` del original también llama a
+`get_model_id_for_kiro(request_data.model, HIDDEN_MODELS)`. En vez de
+importar `convertersanthropic` (sus dos funciones no están exportadas, y
+acoplar un adaptador a los internals de otro no reduce el radio de impacto),
+este paquete lleva su propia copia de `normalizeModelName` +
+`getModelIDForKiro` + `HiddenModels`. Cuando `internal/modelresolver` exista,
+la tarea que lo cree debería sustituir las TRES copias (converterscore no
+tiene una propia — solo los dos adaptadores) por una llamada real a ese
+paquete.
 
 ## Paquetes que no existen en el original
 
