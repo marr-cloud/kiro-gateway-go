@@ -20,9 +20,15 @@ package converterscore
 // puntero porque None (sin presupuesto explícito, usar el default de
 // configuración) y 0 (presupuesto explícito de cero) son valores distintos en
 // el original.
+//
+// Lleva tags json (Task 7, refinamiento sobre la declaración de Task 2) para
+// poder decodificar directamente el segundo argumento posicional de
+// testdata/converters_core/inject_thinking_tags, que el corpus graba como un
+// dict con las claves snake_case del dataclass original (enabled,
+// budget_tokens).
 type ThinkingConfig struct {
-	Enabled      bool
-	BudgetTokens *int
+	Enabled      bool `json:"enabled"`
+	BudgetTokens *int `json:"budget_tokens,omitempty"`
 }
 
 // UnifiedMessage es el formato de mensaje unificado, independiente de API,
