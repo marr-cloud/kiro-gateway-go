@@ -32,7 +32,7 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `streaming_anthropic.py` | `internal/streaminganthropic` | |
 | `routes_openai.py` | `internal/routesopenai` | |
 | `routes_anthropic.py` | `internal/routesanthropic` | |
-| `http_client.py` | `internal/httpclient` | |
+| `http_client.py` | `internal/httpclient` | `transport.go`, `proxy.go`, `client.go`, `stream.go` |
 | `auth.py` | `internal/auth` | |
 | `account_manager.py` | `internal/accountmanager` | |
 | `mcp_tools.py` | `internal/mcptools` | |
