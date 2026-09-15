@@ -132,16 +132,25 @@ func TestEnsureAssistantBeforeToolResultsAgainstCorpus(t *testing.T) {
 // Diez de esos 41 casos se saltan documentadamente: ver
 // knownCorpusInputAliasingDefects.
 func TestMergeAdjacentMessagesAgainstCorpus(t *testing.T) {
+	skipped := 0
 	for _, c := range testutil.LoadCorpus(t, "converters_core/merge_adjacent_messages") {
-		t.Run(c.Name, func(t *testing.T) {
-			if reason, skip := knownCorpusInputAliasingDefects[c.Name]; skip {
+		if reason, skip := knownCorpusInputAliasingDefects[c.Name]; skip {
+			skipped++
+			t.Run(c.Name, func(t *testing.T) {
 				t.Skipf("case %s: input grabado corrupto por aliasing del grabador (ver knownCorpusInputAliasingDefects): %s", c.Name, reason)
-			}
+			})
+			continue
+		}
 
+		t.Run(c.Name, func(t *testing.T) {
 			input := decodeMessages(t, testutil.Arg(t, c.Input, 0), c.Name)
 			got := MergeAdjacentMessages(input)
 			testutil.AssertJSONEqual(t, messagesToRaw(got), c.Output, c.Name)
 		})
+	}
+
+	if skipped != len(knownCorpusInputAliasingDefects) {
+		t.Fatalf("se esperaban %d casos defectuosos documentados, se saltaron %d — knownCorpusInputAliasingDefects y el corpus se han desincronizado", len(knownCorpusInputAliasingDefects), skipped)
 	}
 }
 
