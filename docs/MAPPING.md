@@ -26,7 +26,7 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `models_anthropic.py` | `internal/modelsanthropic` | `blocks.go`, `models.go` |
 | `converters_core.py` | `internal/converterscore` | `types.go`, `extract.go`, `text.go`, `tools.go`, `images.go`, `normalize.go`, `thinking.go`, `payload.go` |
 | `converters_openai.py` | `internal/convertersopenai` | |
-| `converters_anthropic.py` | `internal/convertersanthropic` | |
+| `converters_anthropic.py` | `internal/convertersanthropic` | `converters.go` |
 | `streaming_core.py` | `internal/streamingcore` | |
 | `streaming_openai.py` | `internal/streamingopenai` | |
 | `streaming_anthropic.py` | `internal/streaminganthropic` | |
@@ -39,6 +39,22 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `debug_logger.py` | `internal/debuglogger` | |
 | `debug_middleware.py` | `internal/debugmiddleware` | |
 | `__init__.py` | *(sin equivalente: solo reexporta)* | |
+
+## Duplicación temporal: `model_resolver.py`
+
+`internal/convertersanthropic/converters.go` (Task 9) porta, como funciones NO
+exportadas (`normalizeModelName`, `getModelIDForKiro`) más el package var
+`HiddenModels`, el subconjunto mínimo de `model_resolver.py` que
+`anthropic_to_kiro` necesita para calcular el `modelId` que manda a Kiro
+(`normalize_model_name` + `get_model_id_for_kiro`, sin la clase
+`ModelResolver` completa, sin caché dinámica ni alias — el propio original
+describe `get_model_id_for_kiro` como "a simple helper for converters that
+don't have access to the full ModelResolver"). Se hizo así porque
+`internal/modelresolver` (fila de arriba) todavía no existe y Task 9 no puede
+crear paquetes fuera de `internal/convertersanthropic/*`. Cuando una tarea
+futura implemente `internal/modelresolver`, debería sustituir ese subconjunto
+en `converters.go` por una llamada real a ese paquete en vez de mantener dos
+copias del mismo algoritmo.
 
 ## Paquetes que no existen en el original
 
