@@ -43,10 +43,23 @@ type UnifiedMessage struct {
 
 // UnifiedTool es el formato de herramienta unificado, independiente de API.
 // Corresponde a kiro.converters_core.UnifiedTool.
+//
+// Lleva tags json (Task 4, refinamiento sobre la declaración de Task 2) para
+// poder decodificar directamente las tools del corpus golden
+// (testdata/converters_core/{process_tools_with_long_descriptions,
+// validate_tool_names,convert_tools_to_kiro_format}), que las graba con las
+// claves snake_case que usa el Python original (name, description,
+// input_schema), y para volver a serializar UnifiedTool con esas mismas
+// claves al comparar la salida de ProcessToolsWithLongDescriptions contra
+// esos casos. Description sigue siendo string, no *string: el original puede
+// llevar description=None, pero como el resto del port ya trata "" y None de
+// forma indistinta (ver tools.go), esa distinción no sobrevive el port; los
+// tests de tools_test.go normalizan explícitamente el único caso del corpus
+// donde importa.
 type UnifiedTool struct {
-	Name        string
-	Description string
-	InputSchema map[string]any
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"input_schema"`
 }
 
 // KiroPayloadResult es el resultado de construir el payload de Kiro: el
