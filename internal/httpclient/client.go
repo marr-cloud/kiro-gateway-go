@@ -44,6 +44,7 @@
 package httpclient
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -68,18 +69,23 @@ const (
 )
 
 // Clock abstrae el tiempo para que los tests de backoff no duerman de
-// verdad. Solo cubre las esperas entre reintentos (Sleep); los timeouts de
-// lectura (primer token / entre chunks) usan reloj real porque corren una
-// carrera genuina contra I/O de red — ver readFirstChunk/readOnceWithTimeout.
+// verdad. Solo cubre las esperas entre reintentos (Sleep/After); los
+// timeouts de lectura (primer token / entre chunks) usan reloj real porque
+// corren una carrera genuina contra I/O de red — ver
+// readFirstChunk/readOnceWithTimeout. After existe además de Sleep porque el
+// backoff de 429/5xx necesita poder cortarse si ctx se cancela mientras
+// espera (ver waitForRetry); Sleep no deja hueco para eso.
 type Clock interface {
 	Now() time.Time
 	Sleep(d time.Duration)
+	After(d time.Duration) <-chan time.Time
 }
 
 type realClock struct{}
 
-func (realClock) Now() time.Time        { return time.Now() }
-func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
+func (realClock) Now() time.Time                         { return time.Now() }
+func (realClock) Sleep(d time.Duration)                  { time.Sleep(d) }
+func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 // Client es el cliente HTTP compartido. No fija http.Client.Timeout: un
 // timeout global cortaría cualquier stream en curso, sea cual sea su
@@ -160,9 +166,14 @@ func forceRefreshToken(ctx context.Context, tp utils.TokenProvider) {
 //
 //   - 403: fuerza refresco de token (forceRefresher, ver arriba) y repite,
 //     sin consumir backoff.
-//   - 429 y 5xx: espera baseRetryDelay×2^intento (1s, 2s, 4s...) y repite.
-//     Agotados los intentos, devuelve la ÚLTIMA respuesta tal cual (como
-//     el "last_response" del original), no un error.
+//   - 429 y 5xx: espera baseRetryDelay×2^intento (1s, 2s, 4s...) y repite,
+//     SIN condición — incluso en el último intento, igual que el original
+//     (http_client.py:247-261 duerme sin comprobar si quedan intentos; el
+//     bucle deja de iterar porque range(max_retries) se agota, no porque se
+//     salte la espera). Agotados los intentos, devuelve la ÚLTIMA respuesta
+//     tal cual (como el "last_response" del original, con el body
+//     re-materializado en memoria porque en Go, a diferencia de httpx en
+//     modo no-streaming, el body no se buferiza solo), no un error.
 //   - Errores de transporte (DNS, TLS, timeout, rechazo...): se clasifican
 //     con networkerrors.Classify; si es reintentable y quedan intentos,
 //     espera y repite; si no, devuelve un *RequestError de inmediato.
@@ -191,6 +202,12 @@ func (c *Client) RequestWithRetry(ctx context.Context, req *http.Request, tp uti
 	if maxAttempts < 1 {
 		maxAttempts = 1
 	}
+
+	// lastRetryableResp guarda la última respuesta 429/5xx, re-materializada
+	// en memoria (ver bufferAndClose), por si se agotan los intentos: el
+	// original la devuelve tal cual (last_response) en vez de sintetizar un
+	// error, y el llamador necesita ver el código/cuerpo real de Kiro.
+	var lastRetryableResp *http.Response
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		attemptReq, err := c.prepareAttempt(ctx, req, tp, stream)
@@ -233,23 +250,69 @@ func (c *Client) RequestWithRetry(ctx context.Context, req *http.Request, tp uti
 
 		case resp.StatusCode == http.StatusTooManyRequests ||
 			(resp.StatusCode >= 500 && resp.StatusCode < 600):
-			if attempt < maxAttempts-1 {
-				drainAndClose(resp.Body)
-				c.clock.Sleep(backoffDelay(attempt))
-				continue
+			buffered, berr := bufferAndClose(resp)
+			if berr != nil {
+				return nil, &RequestError{Info: networkerrors.Classify(berr)}
 			}
-			return resp, nil
+			lastRetryableResp = buffered
+			if err := c.waitForRetry(ctx, attempt); err != nil {
+				return nil, err
+			}
+			continue
 
 		default:
 			return resp, nil
 		}
 	}
 
+	if lastRetryableResp != nil {
+		return lastRetryableResp, nil
+	}
+
 	// Solo se llega aquí si TODOS los intentos fueron 403 (ningún otro
-	// camino del switch deja que el bucle termine sin devolver). El
-	// original, en ese caso, tampoco tiene last_response ni last_error_info
-	// y cae en el HTTPException genérico de las líneas 331-342.
-	return nil, &RequestError{Info: exhaustedInfo()}
+	// camino del switch deja que el bucle termine sin devolver ni sin fijar
+	// lastRetryableResp). El original, en ese caso, tampoco tiene
+	// last_response ni last_error_info y cae en el HTTPException genérico
+	// de las líneas 331-342, que además distingue 504 (stream) de 502
+	// (no-stream).
+	return nil, &RequestError{Info: exhaustedInfo(stream)}
+}
+
+// waitForRetry espera baseRetryDelay×2^attempt antes de reintentar un
+// 429/5xx, pero se corta de inmediato si ctx se cancela mientras espera —
+// a diferencia de un Sleep() plano, que ignoraría la cancelación hasta que
+// el propio delay terminase. Solo se usa en el camino 429/5xx: el original
+// SOLO duerme sin condición en ese camino (http_client.py:247-261); las
+// ramas de excepción (timeout/error de red, y el timeout de primer token de
+// este port) sí comprueban `attempt < max_retries - 1` antes de dormir
+// (http_client.py:276, 295), así que esas dos siguen usando Sleep con guarda.
+func (c *Client) waitForRetry(ctx context.Context, attempt int) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.clock.After(backoffDelay(attempt)):
+		return nil
+	}
+}
+
+// bufferAndClose lee el body completo de resp, lo cierra, y lo sustituye por
+// un io.NopCloser sobre los bytes ya leídos: httpx en modo no-streaming
+// buferiza el body automáticamente dentro de client.request(), así que
+// guardar "last_response" allí es gratis; en Go el body es siempre un
+// stream vivo, así que hay que materializarlo a mano para poder conservarlo
+// más allá del intento que lo produjo (y para poder cerrarlo antes de que el
+// siguiente intento abra una conexión nueva).
+func bufferAndClose(resp *http.Response) (*http.Response, error) {
+	body, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	return resp, nil
 }
 
 func (c *Client) firstTokenTimeout() time.Duration {
@@ -297,12 +360,23 @@ func drainAndClose(rc io.ReadCloser) {
 	_ = rc.Close()
 }
 
-func exhaustedInfo() networkerrors.Info {
+// exhaustedInfo replica el HTTPException genérico de http_client.py:331-342
+// para el caso "no hay last_response ni last_error_info" (en este port:
+// todos los intentos fueron 403). El original distingue 504 para streaming
+// de 502 para no-streaming; antes de este fix el port devolvía 502 siempre,
+// ignorando stream.
+func exhaustedInfo(stream bool) networkerrors.Info {
+	code := 502
+	msg := "Request failed after exhausting all retry attempts."
+	if stream {
+		code = 504
+		msg = "Streaming failed after exhausting all retry attempts."
+	}
 	return networkerrors.Info{
 		Category:          networkerrors.CategoryUnknown,
-		UserMessage:       "Request failed after exhausting all retry attempts.",
+		UserMessage:       msg,
 		TechnicalDetails:  "every attempt returned 403 Forbidden or produced no usable response",
 		IsRetryable:       false,
-		SuggestedHTTPCode: 502,
+		SuggestedHTTPCode: code,
 	}
 }

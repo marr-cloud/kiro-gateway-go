@@ -6,6 +6,7 @@ package httpclient
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net/http"
@@ -52,8 +53,11 @@ func (m *mockTokenProvider) callCounts() (access, refresh int) {
 	return m.accessCalls, m.refreshCalls
 }
 
-// fakeClock registra los Sleep() sin bloquear de verdad, para que los tests
-// de backoff no tarden segundos reales.
+// fakeClock registra los Sleep()/After() sin bloquear de verdad, para que
+// los tests de backoff no tarden segundos reales. Ambos métodos comparten el
+// mismo registro `sleeps`: da igual qué camino del retry loop se ejerza
+// (Sleep con guarda para errores de red/primer-token, After sin guarda para
+// 429/5xx), un test que llama a recorded() ve todas las esperas por igual.
 type fakeClock struct {
 	mu     sync.Mutex
 	sleeps []time.Duration
@@ -65,6 +69,21 @@ func (f *fakeClock) Sleep(d time.Duration) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sleeps = append(f.sleeps, d)
+}
+
+// After registra la duración pedida y devuelve un canal ya disparado: los
+// tests con fakeClock nunca esperan de verdad. Como el canal ya trae un
+// valor al devolverse, un select{ case <-ctx.Done(): ...; case <-After(d): }
+// con un ctx TODAVÍA no cancelado en el momento de la llamada siempre toma
+// la rama de After (ctx.Done() no está listo todavía); ningún test de este
+// paquete llama a waitForRetry con un ctx ya cancelado de antemano.
+func (f *fakeClock) After(d time.Duration) <-chan time.Time {
+	f.mu.Lock()
+	f.sleeps = append(f.sleeps, d)
+	f.mu.Unlock()
+	ch := make(chan time.Time, 1)
+	ch <- time.Now()
+	return ch
 }
 
 func (f *fakeClock) recorded() []time.Duration {
@@ -179,6 +198,77 @@ func Test403TriggersRefreshAndRetries(t *testing.T) {
 	}
 }
 
+// TestExhausted403NonStreamReturns502 verifica que, cuando TODOS los
+// intentos devuelven 403 (nunca se llega a un 200 ni a un 429/5xx que deje
+// last_response), RequestWithRetry con stream=false cae en el
+// HTTPException genérico de http_client.py:331-342 con 502 — el código para
+// no-streaming.
+func TestExhausted403NonStreamReturns502(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	clock := &fakeClock{}
+	c := newTestClient(t, testConfig(), clock)
+	tp := &mockTokenProvider{token: "tok"}
+
+	_, err := c.RequestWithRetry(context.Background(), newPOSTRequest(t, srv.URL), tp, false)
+	if err == nil {
+		t.Fatalf("RequestWithRetry: want error after exhausting all-403 attempts, got nil")
+	}
+	var reqErr *RequestError
+	if !errors.As(err, &reqErr) {
+		t.Fatalf("err = %v (%T), want *RequestError", err, err)
+	}
+	if reqErr.Info.SuggestedHTTPCode != 502 {
+		t.Fatalf("SuggestedHTTPCode = %d, want 502 (non-streaming)", reqErr.Info.SuggestedHTTPCode)
+	}
+	if hits != maxRetries {
+		t.Fatalf("hits = %d, want %d (maxRetries)", hits, maxRetries)
+	}
+	if _, refreshCalls := tp.callCounts(); refreshCalls != maxRetries {
+		t.Fatalf("refreshCalls = %d, want %d (one per 403)", refreshCalls, maxRetries)
+	}
+}
+
+// TestExhausted403StreamReturns504 replica
+// TestExhausted403NonStreamReturns502 con stream=true: el original devuelve
+// 504 en ese caso (http_client.py:333-337), no 502. El presupuesto de
+// intentos también cambia a cfg.FirstTokenMaxRetries.
+func TestExhausted403StreamReturns504(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	cfg := testConfig()
+	cfg.FirstTokenMaxRetries = 2
+
+	clock := &fakeClock{}
+	c := newTestClient(t, cfg, clock)
+	tp := &mockTokenProvider{token: "tok"}
+
+	_, err := c.RequestWithRetry(context.Background(), newPOSTRequest(t, srv.URL), tp, true)
+	if err == nil {
+		t.Fatalf("RequestWithRetry: want error after exhausting all-403 attempts, got nil")
+	}
+	var reqErr *RequestError
+	if !errors.As(err, &reqErr) {
+		t.Fatalf("err = %v (%T), want *RequestError", err, err)
+	}
+	if reqErr.Info.SuggestedHTTPCode != 504 {
+		t.Fatalf("SuggestedHTTPCode = %d, want 504 (streaming)", reqErr.Info.SuggestedHTTPCode)
+	}
+	if hits != cfg.FirstTokenMaxRetries {
+		t.Fatalf("hits = %d, want %d (FirstTokenMaxRetries)", hits, cfg.FirstTokenMaxRetries)
+	}
+}
+
 // Test429Backoff verifica el backoff exponencial 1s, 2s ante 429 repetidos,
 // con reloj falso para no dormir de verdad.
 func Test429Backoff(t *testing.T) {
@@ -251,6 +341,50 @@ func Test429ExhaustedReturnsLastResponse(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "rate limited" {
 		t.Fatalf("body = %q, want the last 429 body preserved", body)
+	}
+}
+
+// TestExhaustedRetriesSleepsExpectedTimes fija el patrón exacto de esperas
+// cuando los 3 intentos agotan con 429: el original (http_client.py:247-261)
+// duerme SIN condición en cada iteración, incluso la última — a diferencia
+// de las ramas de excepción, que sí comprueban si queda otro intento antes
+// de dormir. baseRetryDelay×2^attempt para attempt=0,1,2 da 1s+2s+4s=7s.
+func TestExhaustedRetriesSleepsExpectedTimes(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	clock := &fakeClock{}
+	c := newTestClient(t, testConfig(), clock)
+	tp := &mockTokenProvider{token: "tok"}
+
+	resp, err := c.RequestWithRetry(context.Background(), newPOSTRequest(t, srv.URL), tp, false)
+	if err != nil {
+		t.Fatalf("RequestWithRetry: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if hits != maxRetries {
+		t.Fatalf("hits = %d, want %d (maxRetries)", hits, maxRetries)
+	}
+
+	want := []time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second}
+	got := clock.recorded()
+	if len(got) != len(want) {
+		t.Fatalf("sleeps = %v, want %v (one per attempt, including the last)", got, want)
+	}
+	var total time.Duration
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("sleeps[%d] = %v, want %v", i, got[i], want[i])
+		}
+		total += got[i]
+	}
+	if total != 7*time.Second {
+		t.Fatalf("cumulative sleep = %v, want 7s (1s+2s+4s)", total)
 	}
 }
 
@@ -520,20 +654,59 @@ func TestStreamingReadTimeoutAppliesBetweenChunks(t *testing.T) {
 	}
 }
 
-// TestNonRetryableNetworkErrorReturnsImmediately verifica que un error de
-// conexión clasificado como no reintentable (aquí, cancelación de contexto)
-// no agota reintentos innecesarios.
-func TestNonRetryableNetworkErrorReturnsImmediately(t *testing.T) {
-	c := newTestClient(t, testConfig(), &fakeClock{})
+// roundTripFunc adapta una función a http.RoundTripper, para poder inyectar
+// errores de transporte sintéticos sin un servidor real.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+// TestNonRetryableCertificateErrorStopsAfterOneAttempt verifica que un error
+// de transporte clasificado como NO reintentable no consume ningún
+// reintento. Antes usaba context.Canceled como el error "no reintentable",
+// pero networkerrors.Classify traduce context.Canceled a kindOther, cuyo
+// caso por defecto en classifyDesc pone IsRetryable=true (ver
+// internal/networkerrors/classify.go) — esa premisa era falsa y la única
+// aserción (err == nil) no lo notaba, porque pasaba igual tras 1 intento que
+// tras maxRetries con sleeps de por medio.
+//
+// El caso real no-reintentable más simple de classify.go es un error TLS/
+// certificado (rama SSL de classifyConnectError, IsRetryable=false, 502).
+// *tls.CertificateVerificationError es justo el tipo que
+// networkerrors.translate() reconoce explícitamente. Se inyecta vía un
+// http.RoundTripper falso (sin red real) y se cuenta cuántas veces se llama,
+// para verificar que el retry loop corta al primer intento.
+func TestNonRetryableCertificateErrorStopsAfterOneAttempt(t *testing.T) {
+	var calls int
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		return nil, &tls.CertificateVerificationError{Err: errors.New("bad certificate")}
+	})
+
+	clock := &fakeClock{}
+	c := &Client{
+		cfg:        testConfig(),
+		httpClient: &http.Client{Transport: rt},
+		clock:      clock,
+	}
 	tp := &mockTokenProvider{token: "tok"}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	req := newPOSTRequest(t, "http://127.0.0.1:1/unreachable")
-	_, err := c.RequestWithRetry(ctx, req, tp, false)
+	req := newPOSTRequest(t, "https://kiro.invalid/x")
+	_, err := c.RequestWithRetry(context.Background(), req, tp, false)
 	if err == nil {
-		t.Fatalf("RequestWithRetry: want error for canceled context, got nil")
+		t.Fatalf("RequestWithRetry: want error for a non-retryable TLS error, got nil")
+	}
+	var reqErr *RequestError
+	if !errors.As(err, &reqErr) {
+		t.Fatalf("err = %v (%T), want *RequestError", err, err)
+	}
+	if reqErr.Info.IsRetryable {
+		t.Fatalf("Info.IsRetryable = true, want false (certificate errors are not retryable)")
+	}
+	if calls != 1 {
+		t.Fatalf("RoundTrip calls = %d, want 1 (a non-retryable error must not retry)", calls)
+	}
+	if got := clock.recorded(); len(got) != 0 {
+		t.Fatalf("sleeps = %v, want none (no retry means no backoff wait)", got)
 	}
 }
 
