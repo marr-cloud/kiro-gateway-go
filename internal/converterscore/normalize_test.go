@@ -145,6 +145,191 @@ func TestMergeAdjacentMessagesAgainstCorpus(t *testing.T) {
 	}
 }
 
+// TestMergeAdjacentMessagesUnit cubre a mano el algoritmo de fusión de
+// MergeAdjacentMessages: el propio corpus no lo ejercita, porque los 31
+// casos de TestMergeAdjacentMessagesAgainstCorpus que NO están en
+// knownCorpusInputAliasingDefects tienen roles estrictamente alternos (nunca
+// entran en la rama de fusión de converters_core.py:1099) y los 10 que SÍ
+// entran en esa rama son justo los que se saltan por el defecto de grabación
+// del corpus. Sin este test, ni mergeContent ni la concatenación de
+// tool_calls/tool_results tendrían ninguna cobertura automática.
+//
+// Las entradas de los cuatro primeros casos (y del quinto, extra) NO salen
+// del corpus tal cual — salen de RECONSTRUIR la llamada real que hay detrás
+// de cada caso de knownCorpusInputAliasingDefects, deshaciendo a mano la
+// mutación en sitio que corrompe su "input" grabado (content: se le resta a
+// la cola de la fusión el texto ya conocido del segundo mensaje —
+// pristino, sin mutar—, y lo que queda es el texto del primero antes de
+// fusionar; tool_calls/tool_results: mismo razonamiento sobre el prefijo de
+// la lista concatenada). Cada reconstrucción se verificó por separado
+// ejecutando kiro.converters_core.merge_adjacent_messages ORIGINAL (commit
+// fijado a5292ca, vía .upstream/.venv) contra la entrada reconstruida y
+// reproduciendo el MISMO paso que corrompe el corpus (serializar los
+// argumentos DESPUÉS de llamar, como hace
+// tools/corpus/recorder.py:_wrap_function): la entrada y la salida
+// resultantes coinciden byte a byte con el "input" y el "output" grabados
+// del hash citado en cada caso. Ver la sección "Fix round 1" del informe de
+// la tarea para el script de verificación completo.
+func TestMergeAdjacentMessagesUnit(t *testing.T) {
+	cases := []struct {
+		name  string
+		note  string
+		input []UnifiedMessage
+		want  []UnifiedMessage
+	}{
+		{
+			name: "scalar_text_merge",
+			note: "reconstruido de merge_adjacent_messages/3f0f14ef66f08f71.json " +
+				"(el input grabado ya traía \"Hello\\nWorld\" en el primer mensaje, " +
+				"fusionado por el defecto de aliasing; el segundo mensaje \"World\" " +
+				"sí es pristino, así que el primero original era \"Hello\")",
+			input: []UnifiedMessage{
+				{Role: "user", Content: "Hello"},
+				{Role: "user", Content: "World"},
+			},
+			want: []UnifiedMessage{
+				{Role: "user", Content: "Hello\nWorld"},
+			},
+		},
+		{
+			name: "tool_calls_concatenation_two_messages",
+			note: "reconstruido de merge_adjacent_messages/e8aa05c5f4a493fc.json " +
+				"(el input grabado ya traía ambos tool_calls en el primer mensaje; " +
+				"el segundo, pristino, solo traía tooluse_second, así que el primero " +
+				"original solo traía tooluse_first)",
+			input: []UnifiedMessage{
+				{Role: "assistant", Content: "", ToolCalls: []map[string]any{
+					{"id": "tooluse_first", "type": "function", "function": map[string]any{"name": "shell", "arguments": `{"command": ["ls"]}`}},
+				}},
+				{Role: "assistant", Content: "", ToolCalls: []map[string]any{
+					{"id": "tooluse_second", "type": "function", "function": map[string]any{"name": "shell", "arguments": `{"command": ["pwd"]}`}},
+				}},
+			},
+			want: []UnifiedMessage{
+				{Role: "assistant", Content: "\n", ToolCalls: []map[string]any{
+					{"id": "tooluse_first", "type": "function", "function": map[string]any{"name": "shell", "arguments": `{"command": ["ls"]}`}},
+					{"id": "tooluse_second", "type": "function", "function": map[string]any{"name": "shell", "arguments": `{"command": ["pwd"]}`}},
+				}},
+			},
+		},
+		{
+			name: "tool_calls_concatenation_chain_of_three",
+			note: "reconstruido de merge_adjacent_messages/a70774077263884f.json " +
+				"(coincide con el test unitario del original, " +
+				"test_converters_core.py:1219-1239, " +
+				"\"test_merges_three_assistant_messages_with_tool_calls\"): " +
+				"el primer mensaje del input grabado ya traía los tres tool_calls " +
+				"fusionados; el segundo y el tercero, pristinos, muestran cada uno " +
+				"un solo tool_call propio",
+			input: []UnifiedMessage{
+				{Role: "assistant", Content: "", ToolCalls: []map[string]any{
+					{"id": "call_1", "type": "function", "function": map[string]any{"name": "tool1", "arguments": "{}"}},
+				}},
+				{Role: "assistant", Content: "", ToolCalls: []map[string]any{
+					{"id": "call_2", "type": "function", "function": map[string]any{"name": "tool2", "arguments": "{}"}},
+				}},
+				{Role: "assistant", Content: "", ToolCalls: []map[string]any{
+					{"id": "call_3", "type": "function", "function": map[string]any{"name": "tool3", "arguments": "{}"}},
+				}},
+			},
+			want: []UnifiedMessage{
+				{Role: "assistant", Content: "\n\n", ToolCalls: []map[string]any{
+					{"id": "call_1", "type": "function", "function": map[string]any{"name": "tool1", "arguments": "{}"}},
+					{"id": "call_2", "type": "function", "function": map[string]any{"name": "tool2", "arguments": "{}"}},
+					{"id": "call_3", "type": "function", "function": map[string]any{"name": "tool3", "arguments": "{}"}},
+				}},
+			},
+		},
+		{
+			name: "tool_results_concatenation_two_messages",
+			note: "reconstruido de merge_adjacent_messages/07595db32f8eff83.json " +
+				"(el input grabado ya traía ambos tool_results en el primer mensaje; " +
+				"el segundo, pristino, solo traía el resultado de call_2, así que el " +
+				"primero original solo traía el de call_1)",
+			input: []UnifiedMessage{
+				{Role: "user", Content: "", ToolResults: []map[string]any{
+					{"type": "tool_result", "tool_use_id": "call_1", "content": "Result 1"},
+				}},
+				{Role: "user", Content: "", ToolResults: []map[string]any{
+					{"type": "tool_result", "tool_use_id": "call_2", "content": "Result 2"},
+				}},
+			},
+			want: []UnifiedMessage{
+				{Role: "user", Content: "\n", ToolResults: []map[string]any{
+					{"type": "tool_result", "tool_use_id": "call_1", "content": "Result 1"},
+					{"type": "tool_result", "tool_use_id": "call_2", "content": "Result 2"},
+				}},
+			},
+		},
+		{
+			name: "list_content_merge_list_plus_list",
+			note: "reconstruido de merge_adjacent_messages/a083c350718d3cec.json " +
+				"(el ÚNICO caso de todo el corpus que ejercita content en forma de " +
+				"lista de bloques en una fusión, y está entre los 10 saltados: el " +
+				"input grabado ya traía ambos bloques de texto en el primer mensaje; " +
+				"el segundo, pristino, solo traía el bloque \"Part 2\", así que el " +
+				"primero original solo traía \"Part 1\")",
+			input: []UnifiedMessage{
+				{Role: "user", Content: []any{map[string]any{"type": "text", "text": "Part 1"}}},
+				{Role: "user", Content: []any{map[string]any{"type": "text", "text": "Part 2"}}},
+			},
+			want: []UnifiedMessage{
+				{Role: "user", Content: []any{
+					map[string]any{"type": "text", "text": "Part 1"},
+					map[string]any{"type": "text", "text": "Part 2"},
+				}},
+			},
+		},
+		{
+			name: "list_content_merge_list_plus_scalar",
+			note: "sin caso de corpus, ni siquiera corrupto: en los 41 casos de " +
+				"merge_adjacent_messages solo a083c350718d3cec ejercita content en " +
+				"forma de lista, y es list+list. Esta rama de mergeContent " +
+				"(converters_core.py:1103-1104: last.content es lista, msg.content " +
+				"es escalar) no tiene ningún caso grabado que la cubra; caso escrito " +
+				"a mano siguiendo el algoritmo documentado.",
+			input: []UnifiedMessage{
+				{Role: "user", Content: []any{map[string]any{"type": "text", "text": "Part 1"}}},
+				{Role: "user", Content: "Part 2 plano"},
+			},
+			want: []UnifiedMessage{
+				{Role: "user", Content: []any{
+					map[string]any{"type": "text", "text": "Part 1"},
+					map[string]any{"type": "text", "text": "Part 2 plano"},
+				}},
+			},
+		},
+		{
+			name: "list_content_merge_scalar_plus_list",
+			note: "sin caso de corpus, ni siquiera corrupto: misma situación que el " +
+				"caso anterior, pero para la rama complementaria " +
+				"(converters_core.py:1105-1106: last.content es escalar, msg.content " +
+				"es lista). Caso escrito a mano siguiendo el algoritmo documentado.",
+			input: []UnifiedMessage{
+				{Role: "user", Content: "Part 1 plano"},
+				{Role: "user", Content: []any{map[string]any{"type": "text", "text": "Part 2"}}},
+			},
+			want: []UnifiedMessage{
+				{Role: "user", Content: []any{
+					map[string]any{"type": "text", "text": "Part 1 plano"},
+					map[string]any{"type": "text", "text": "Part 2"},
+				}},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wantRaw, err := json.Marshal(messagesToRaw(tc.want))
+			if err != nil {
+				t.Fatalf("case %s: marshal want: %v", tc.name, err)
+			}
+			got := MergeAdjacentMessages(tc.input)
+			testutil.AssertJSONEqual(t, messagesToRaw(got), json.RawMessage(wantRaw), tc.name+" ("+tc.note+")")
+		})
+	}
+}
+
 // TestEnsureFirstMessageIsUserAgainstCorpus valida EnsureFirstMessageIsUser
 // contra los 40 casos grabados de
 // kiro.converters_core:ensure_first_message_is_user.
