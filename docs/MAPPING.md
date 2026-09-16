@@ -32,9 +32,9 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `streaming_anthropic.py` | `internal/streaminganthropic` | |
 | `routes_openai.py` | `internal/routesopenai` | |
 | `routes_anthropic.py` | `internal/routesanthropic` | |
-| `http_client.py` | `internal/httpclient` | |
-| `auth.py` | `internal/auth` | |
-| `account_manager.py` | `internal/accountmanager` | |
+| `http_client.py` | `internal/httpclient` | `transport.go`, `proxy.go`, `client.go`, `stream.go` |
+| `auth.py` | `internal/auth` | `types.go`, `manager.go`, `json_source.go`, `oidc.go`, `sqlite.go`, `refresh.go` (Task 1-2 porta `types.go`, `manager.go` (constructores + `AccessToken`/`ProfileARN`, stub de `ForceRefresh`), `json_source.go`, stubs de `oidc.go`/`sqlite.go`. Task 3 completa `oidc.go` con `refreshAWSSSO`/`doAWSSSORefreshAttempt` (ports de `auth.py:743-869`) y `loadEnterpriseDeviceRegistration` (port de `auth.py:458-487`). Task 4 completa `sqlite.go` (`loadFromSQLite`/`saveToSQLite` — ports de `auth.py:248-382` y `auth.py:388-633`). Task 5 implanta `refresh.go` con `Refresh()` singleflight (port de `auth.py:870-934` `get_access_token`), graceful degradation (SQLite+400, `auth.py:906-919`), y reestructura `AccessToken`/`ForceRefresh`) |
+| `account_manager.py` | `internal/accountmanager` | `types.go`, `discovery.go`, `state.go`, `manager.go`, `manager_test.go`, `breaker.go`, `selection.go`, `failover.go`, `failover_test.go`, `init.go`, `init_test.go`, `integration_test.go` (Task 6 porta `types.go` (Account, AccountStats, ModelAccountList), `discovery.go` (loadCredentials, processRefreshTokenEntry, processFileEntry, scanDirectory, processFile, isValidJSONFile, isValidSQLiteFile — ports de `account_manager.py:127-326`), `state.go` (LoadState, SaveState, renameWithRetry — ports de `account_manager.py:328-416`), `manager.go` (Manager struct, NewManager, LoadCredentials, SaveStatePeriodically, hasStateChanged, Accounts — ports de `account_manager.py:179-214` y las rutas del state loop). Task 7 implanta circuit breaker (breaker.go — quarantineWindow, isInQuarantine), sticky selection (selection.go — nextEnabledIdx), failover (failover.go — GetNextAccount, ReportSuccess, ReportFailure — todos ports de `account_manager.py:645-867`). Task 8 implanta model catalog (init.go — Initialize, refreshAccountModels, GetAllAvailableModels, GetFirstAccount, fallbackModels — ports de `account_manager.py:432-644, 868-897` y config.py:276-290). Task 9 implanta integration test (`integration_test.go` — TestPhase4Integration que verifica wiring de Manager + auth.Manager + httpclient.Client contra fake Kiro server: 200 success, 429 retry, 500 failover).) |
 | `mcp_tools.py` | `internal/mcptools` | |
 | `debug_logger.py` | `internal/debuglogger` | |
 | `debug_middleware.py` | `internal/debugmiddleware` | |
@@ -91,3 +91,10 @@ paquete.
 |---|---|
 | `utils` ↔ `auth` | `utils` declara la interfaz `TokenProvider` y `auth.Manager` la satisface |
 | `mcp_tools` ↔ `streaming_anthropic` | El formateo de SSE se extrae a `internal/sse` |
+
+## Extensiones deliberadas respecto al original
+
+| Dónde | Qué | Por qué |
+|---|---|---|
+| `internal/auth.AuthType` | 5 valores (`Unknown`, `KiroDesktop`, `AWSSSO`, `KiroCLI`, `RefreshOnly`) en vez de los 2 del `Enum` original (`KIRO_DESKTOP`, `AWS_SSO_OIDC`, `auth.py:68-83`) | Reflejan los tres `type` que ya distingue `credentials.json` (`json`, `sqlite`, `refresh_token`, spec §6.11) en vez de que kiro-cli y refresh-token-only colapsen en `KIRO_DESKTOP` como hoy hace el Python |
+| `internal/auth` (JSON source) | La detección de región por ARN (`auth.py:357-366`, solo en el loader de SQLite en el original) se generaliza como fallback también para el JSON de Kiro Desktop | Pedido explícitamente por el plan de la Task 2 (4 niveles de precedencia de región, incluido "detectado del ARN") y reutilizable sin cambios por la Task 4 (SQLite) |

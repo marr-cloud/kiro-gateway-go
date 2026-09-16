@@ -89,7 +89,7 @@ func TestLoadDefaults(t *testing.T) {
 		{"ACCOUNTS_CONFIG_FILE", cfg.AccountsConfigFile, "credentials.json"},
 		{"ACCOUNTS_STATE_FILE", cfg.AccountsStateFile, "state.json"},
 		{"ACCOUNT_RECOVERY_TIMEOUT", cfg.AccountRecoveryTimeout, 60},
-		{"ACCOUNT_MAX_BACKOFF_MULTIPLIER", cfg.AccountMaxBackoffMultiplier, 1440.0},
+		{"ACCOUNT_MAX_BACKOFF_MULTIPLIER", cfg.AccountMaxBackoffMultiplier, 1440},
 		{"ACCOUNT_PROBABILISTIC_RETRY_CHANCE", cfg.AccountProbabilisticRetryChance, 0.1},
 		{"ACCOUNT_CACHE_TTL", cfg.AccountCacheTTL, 43200},
 		{"STATE_SAVE_INTERVAL_SECONDS", cfg.StateSaveIntervalSeconds, 10},
