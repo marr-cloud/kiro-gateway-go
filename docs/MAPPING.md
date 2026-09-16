@@ -33,7 +33,7 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `routes_openai.py` | `internal/routesopenai` | |
 | `routes_anthropic.py` | `internal/routesanthropic` | |
 | `http_client.py` | `internal/httpclient` | `transport.go`, `proxy.go`, `client.go`, `stream.go` |
-| `auth.py` | `internal/auth` | `types.go`, `manager.go`, `json_source.go`, `oidc.go`, `sqlite.go` (Task 3 añade el refresco AWS SSO OIDC completo, normal y Enterprise `clientIdHash`: `refreshAWSSSO`/`doAWSSSORefreshAttempt` port de `auth.py:743-869`, `loadEnterpriseDeviceRegistration` port de `auth.py:458-487`. Task 4 porta `sqlite.go` (`loadFromSQLite`, `saveToSQLite` — ports de `auth.py:248-382` y `auth.py:388-633`). La rama Kiro Desktop/RefreshOnly sigue en `ErrRefreshNotImplemented`, el envoltorio `singleflight` llega en la Task 5) |
+| `auth.py` | `internal/auth` | `types.go`, `manager.go`, `json_source.go`, `oidc.go`, `sqlite.go`, `refresh.go` (Task 1-2 porta `types.go`, `manager.go` (constructores + `AccessToken`/`ProfileARN`, stub de `ForceRefresh`), `json_source.go`, stubs de `oidc.go`/`sqlite.go`. Task 3 completa `oidc.go` con `refreshAWSSSO`/`doAWSSSORefreshAttempt` (ports de `auth.py:743-869`) y `loadEnterpriseDeviceRegistration` (port de `auth.py:458-487`). Task 4 completa `sqlite.go` (`loadFromSQLite`/`saveToSQLite` — ports de `auth.py:248-382` y `auth.py:388-633`). Task 5 implanta `refresh.go` con `Refresh()` singleflight (port de `auth.py:870-934` `get_access_token`), graceful degradation (SQLite+400, `auth.py:906-919`), y reestructura `AccessToken`/`ForceRefresh`) |
 | `account_manager.py` | `internal/accountmanager` | |
 | `mcp_tools.py` | `internal/mcptools` | |
 | `debug_logger.py` | `internal/debuglogger` | |

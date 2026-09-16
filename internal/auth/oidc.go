@@ -99,6 +99,12 @@ type oidcRefreshResponse struct {
 // aparte solo para LOGGING (auth.py:833-839), nunca para la condición del
 // if. Upstream gana: aquí se reintenta ante cualquier 400, sin mirar el
 // cuerpo.
+//
+// Task 5 (graceful degradation): wraps errors in OIDCError to preserve the
+// HTTP status code, so refresh.go's graceful-degradation logic can distinguish
+// 400 errors from others. This is necessary for the SQLite+400 graceful-
+// degradation path (auth.py:906-919) — if the error loses its status code,
+// the caller can't know whether to apply degradation.
 func (m *Manager) refreshAWSSSO(ctx context.Context) error {
 	statusCode, err := m.doAWSSSORefreshAttempt(ctx)
 	if err == nil {
@@ -106,8 +112,15 @@ func (m *Manager) refreshAWSSSO(ctx context.Context) error {
 	}
 	if statusCode == http.StatusBadRequest && m.authType == AuthTypeKiroCLI {
 		_ = m.loadFromSQLite(m.sqliteDBPath)
-		_, err = m.doAWSSSORefreshAttempt(ctx)
+		statusCode, err = m.doAWSSSORefreshAttempt(ctx)
+		if err != nil && statusCode > 0 {
+			return &OIDCError{StatusCode: statusCode, Err: err}
+		}
 		return err
+	}
+	// Wrap error with status code if we have one
+	if statusCode > 0 {
+		return &OIDCError{StatusCode: statusCode, Err: err}
 	}
 	return err
 }

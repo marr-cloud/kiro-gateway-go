@@ -15,6 +15,7 @@ import (
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -109,6 +110,11 @@ type Manager struct {
 	// sqliteKeyRead holds the exact key that was read from SQLite, used to
 	// write back to the same location (Task 4, read-merge-write pattern).
 	sqliteKeyRead string
+
+	// sfGroup coalesces concurrent Refresh() calls into one via singleflight.
+	// Multiple goroutines calling Refresh() concurrently will all receive the
+	// same result from a single OIDC refresh request (Task 5).
+	sfGroup singleflight.Group
 }
 
 // Aserciones en tiempo de compilación (fix round 1, Minor #2):
@@ -394,38 +400,41 @@ func detectAuthType(c Credentials, fromSQLite bool) AuthType {
 }
 
 // AccessToken implementa utils.TokenProvider. Devuelve el token actual si
-// no está por expirar; si lo está, intenta refrescar y, si el refresco
-// falla, PROPAGA el error — no hay degradación grácil aquí. Ver el ruling
-// de la Task 2: la degradación grácil del original (auth.py:906-919) es
-// estrictamente para el modo SQLite con un 400 de OIDC; en modo JSON/Kiro
-// Desktop (auth.py:925-926, "Non-SQLite mode or non-400 error - propagate
-// the exception") el fallo de refresco siempre se propaga, igual que aquí.
+// no está por expirar; si lo está, llama a Refresh() (que usa singleflight
+// para coalescer llamadas concurrentes). La degradación grácil (Task 5,
+// auth.py:906-919) solo aplica a SQLite+400 y es manejada internamente por
+// Refresh().
+//
+// Restructuración para Task 5: AccessToken ahora lee el token bajo lock,
+// suelta el lock, y LUEGO llama a Refresh() si es necesario. Esto evita un
+// deadlock: Refresh() usa singleflight internally que puede tomar m.mu, y
+// un mutex sync.Mutex no es reentrante.
 func (m *Manager) AccessToken(ctx context.Context) (string, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	now := time.Now().UTC()
-	if m.tokens.AccessToken != "" && !m.tokens.IsExpiringSoon(now, tokenRefreshThreshold) {
-		return m.tokens.AccessToken, nil
+	token := m.tokens.AccessToken
+	isExpiringSoon := m.tokens.IsExpiringSoon(now, tokenRefreshThreshold)
+	m.mu.Unlock()
+
+	// If token is fresh, return it immediately without refresh
+	if token != "" && !isExpiringSoon {
+		return token, nil
 	}
 
-	if _, err := m.refreshLocked(ctx); err != nil {
-		return "", err
-	}
-	if m.tokens.AccessToken == "" {
-		return "", errors.New("auth: failed to obtain access token")
-	}
-	return m.tokens.AccessToken, nil
+	// Token is expiring soon (or empty); call Refresh to refresh it
+	// Refresh uses singleflight to coalesce concurrent calls
+	return m.Refresh(ctx)
 }
 
 // ForceRefresh es la interfaz opcional forceRefresher que
 // internal/httpclient busca por type assertion en el camino de 403
-// (internal/httpclient/client.go:145-160). Hoy es un stub — Task 5 le pone
-// el cuerpo real (singleflight + refresco OIDC/Kiro Desktop).
+// (internal/httpclient/client.go:145-160). Task 5 implementa el cuerpo real:
+// llama a Refresh(ctx) con una flag interna que bypassa el gate de
+// isExpiringSoon, garantizando un refresco incondicional. Usa singleflight
+// para coalescing, y NO aplica graceful degradation (un 403 requiere un
+// token realmente nuevo; devolver el antiguo no ayudaría).
 func (m *Manager) ForceRefresh(ctx context.Context) (string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.refreshLocked(ctx)
+	return m.refreshCoalesced(ctx, true)
 }
 
 // refreshLocked asume que el caller ya tiene m.mu. Task 3 le añade la rama
