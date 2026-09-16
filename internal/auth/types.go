@@ -91,6 +91,26 @@ type Credentials struct {
 	ExpiresAt    time.Time
 	ClientID     string
 	ClientSecret string
+	// ClientIDHash es el equivalente de self._client_id_hash (auth.py:158):
+	// presente solo en credenciales de Enterprise Kiro IDE, cuando el JSON
+	// trae `clientIdHash` en vez de `clientId`/`clientSecret` directos
+	// (auth.py:431-433). Task 3 (internal/auth/oidc.go) lo usa para
+	// resolver clientId/clientSecret desde
+	// ~/.aws/sso/cache/{clientIdHash}.json en el momento del refresco.
+	//
+	// Nota de alcance (Task 3): esta Task solo añade el campo — Save() ya
+	// lo preserva sin cambios porque jsonFileSource.Save hace
+	// read-merge-write sobre un map[string]any y nunca borra claves
+	// desconocidas (ver TestJSONFileSource_SavePreservesUnknownFields).
+	// jsonFileSource.Load() NO llena todavía este campo (ni mergeCredentials
+	// lo copia, ni detectAuthType lo consulta) — Task 2 nunca lo implementó
+	// pese a que el brief de esta Task 3 asumía que sí. Ver el ruling
+	// correspondiente en el informe de la Task 3: el camino Enterprise vía
+	// fichero credentials.json real queda pendiente de una ronda de fix (o
+	// de la Task 4), y por ahora solo es alcanzable construyendo
+	// Credentials{ClientIDHash: ...} directamente (como hacen los tests de
+	// esta Task, igual que hará la fuente SQLite de la Task 4).
+	ClientIDHash string
 }
 
 // Source carga y persiste Credentials contra un almacén concreto. Hoy solo

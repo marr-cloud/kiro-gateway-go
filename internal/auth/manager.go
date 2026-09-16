@@ -359,12 +359,35 @@ func (m *Manager) ForceRefresh(ctx context.Context) (string, error) {
 	return m.refreshLocked(ctx)
 }
 
-// refreshLocked asume que el caller ya tiene m.mu. Es el stub de esta Task:
-// Task 5 sustituye el cuerpo por el refresco real y la persistencia
-// write-through (m.source.Save), dejando la firma intacta para que
-// AccessToken y ForceRefresh no cambien.
-func (m *Manager) refreshLocked(_ context.Context) (string, error) {
-	return "", ErrRefreshNotImplemented
+// refreshLocked asume que el caller ya tiene m.mu. Task 3 le añade la rama
+// AWS SSO OIDC (refreshAWSSSO, oidc.go); Task 5 sustituye el resto (Kiro
+// Desktop, RefreshOnly) por el refresco real envuelto en singleflight,
+// dejando la firma intacta para que AccessToken y ForceRefresh no cambien.
+func (m *Manager) refreshLocked(ctx context.Context) (string, error) {
+	switch m.authType {
+	case AuthTypeAWSSSO:
+		if err := m.refreshAWSSSO(ctx); err != nil {
+			return "", err
+		}
+		return m.tokens.AccessToken, nil
+	default:
+		return "", ErrRefreshNotImplemented
+	}
+}
+
+// loadFromSQLite es el seam que la Task 4 reemplaza con el cuerpo real (la
+// fuente SQLite de kiro-cli, auth.py:294-366). refreshAWSSSO (oidc.go) lo
+// llama tras un 400 cuando m.authType == AuthTypeKiroCLI, replicando
+// _load_credentials_from_sqlite + retry único (auth.py:770-773). Por ahora
+// es un no-op que siempre devuelve nil — preflight ruling documentado en
+// progress.md: "Task 3 depende de loadFromSQLite de la Task 4; stub no-op
+// hasta que aterrice". dbPath queda sin usar a propósito: la Task 4 decide
+// de dónde sale la ruta real (probablemente un nuevo campo en Manager
+// poblado por el constructor de la fuente SQLite); el único call site hoy
+// (oidc.go) pasa una cadena vacía porque no hay otra fuente disponible
+// todavía.
+func (m *Manager) loadFromSQLite(dbPath string) error {
+	return nil
 }
 
 // ProfileARN devuelve el ARN de perfil de CodeWhisperer actual. Con mutex
