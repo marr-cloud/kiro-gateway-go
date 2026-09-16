@@ -5,6 +5,10 @@ package accountmanager
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -269,5 +273,82 @@ func TestRefreshAccountModels_RuntimeEndpoint(t *testing.T) {
 	}
 	if m.accounts[0].Models.TTL == 0 {
 		t.Errorf("TTL should not be zero")
+	}
+}
+
+// TestInitialize_ParallelismCapped tests that Initialize respects concurrency limit
+func TestInitialize_ParallelismCapped(t *testing.T) {
+	cfg := &config.Config{
+		KiroRegion:      "us-east-1",
+		RefreshToken:    "test-token",
+		AccountCacheTTL: 3600,
+	}
+	m, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	const numAccounts = 20
+	var running int32
+	var maxRunning int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&running, 1)
+		defer atomic.AddInt32(&running, -1)
+
+		// Track maximum concurrency
+		for {
+			m := atomic.LoadInt32(&maxRunning)
+			if cur > m && atomic.CompareAndSwapInt32(&maxRunning, m, cur) {
+				break
+			}
+			if cur <= m {
+				break
+			}
+		}
+
+		time.Sleep(50 * time.Millisecond) // Hold long enough to overlap goroutines
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"models": []string{"model"},
+		})
+	}))
+	defer server.Close()
+
+	// Create 20 accounts
+	m.mu.Lock()
+	for i := 0; i < numAccounts; i++ {
+		authMgr, err := auth.NewManager(cfg)
+		if err != nil {
+			t.Fatalf("NewManager auth failed: %v", err)
+		}
+
+		m.accounts = append(m.accounts,
+			&Account{
+				ID:      "acc",
+				Enabled: true,
+				Auth:    authMgr,
+				Models: ModelAccountList{
+					LoadedAt: time.Time{},   // Zero time triggers refresh check
+					TTL:      1 * time.Hour, // Non-zero TTL for proper expiry check
+				},
+			},
+		)
+	}
+	m.isRuntimeEndpointOverride = func(_ string) bool { return false }
+	m.listURLOverride = func(_ string) string { return server.URL + "/ListAvailableModels" }
+	m.mu.Unlock()
+
+	// Initialize all accounts in parallel
+	err = m.Initialize(context.Background())
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	// Verify concurrency was capped
+	maxConcur := atomic.LoadInt32(&maxRunning)
+	if maxConcur > int32(initConcurrency) {
+		t.Errorf("Max concurrent goroutines (%d) exceeded limit (%d)", maxConcur, initConcurrency)
 	}
 }
