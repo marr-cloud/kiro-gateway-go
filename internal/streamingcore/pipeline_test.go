@@ -118,14 +118,14 @@ func TestFeedContextUsageEvent(t *testing.T) {
 }
 
 func TestFeedToolUseEvent(t *testing.T) {
-	// Test tool_call event → KiroEvent tool_use
-	// We create a tool call through the parsers.Parser and convert it
+	// Test tool_call event → KiroEvent tool_use via helper function
+	// This tests the extractToolUseData helper directly, not through Pipeline integration
 	parser := parsers.NewParser()
 
-	// Feed tool_start event
+	// Feed tool_start event (synthetic minimal format for testing extractToolUseData extraction logic)
 	toolStartJSON := []byte(`{"name":"get_weather","input":{"location":"NYC"}}`)
 	_ = parser.Feed(toolStartJSON)
-	// tool_start doesn't produce events directly, just accumulates state
+	// tool_start doesn't produce events directly, just accumulates state in the parser
 
 	// Call Finish to get the tool_call events
 	toolCallEvents := parser.Finish()
@@ -143,6 +143,10 @@ func TestFeedToolUseEvent(t *testing.T) {
 
 	if kiroEvent.ToolUse == nil {
 		t.Fatalf("expected ToolUse to be non-nil")
+	}
+
+	if kiroEvent.ToolUse.ID == "" {
+		t.Errorf("expected ID to be populated")
 	}
 
 	if kiroEvent.ToolUse.Name != "get_weather" {
@@ -188,6 +192,55 @@ func TestFinishWithPendingThinking(t *testing.T) {
 
 	if finishEvents[0].Kind != "thinking" {
 		t.Errorf("expected Kind 'thinking', got %q", finishEvents[0].Kind)
+	}
+}
+
+func TestFeedToolUseViaFinish(t *testing.T) {
+	// Test tool_use event via Pipeline.Feed → Pipeline.Finish integration
+	// This ensures the Pipeline correctly converts tool_call events from parser.Finish()
+	pipeline := NewPipeline(thinkingparser.HandlingAsReasoningContent, 256)
+
+	// Feed a tool_start event to the pipeline
+	// The parser accumulates this but doesn't emit events from Feed
+	toolStartJSON := []byte(`{"name":"search","input":{"query":"test"}}`)
+	events := pipeline.Feed(toolStartJSON)
+
+	// No events yet - tool_start is accumulated in parser state
+	if len(events) != 0 {
+		t.Errorf("expected 0 events from Feed (tool_start accumulates), got %d", len(events))
+	}
+
+	// Finish the pipeline to flush any pending tool calls
+	finishEvents := pipeline.Finish()
+
+	// Should have one tool_use event from the accumulated tool_start
+	if len(finishEvents) != 1 {
+		t.Fatalf("expected 1 event from Finish (tool_call), got %d", len(finishEvents))
+	}
+
+	event := finishEvents[0]
+	if event.Kind != "tool_use" {
+		t.Errorf("expected Kind 'tool_use', got %q", event.Kind)
+	}
+
+	if event.ToolUse == nil {
+		t.Fatalf("expected ToolUse to be non-nil")
+	}
+
+	if event.ToolUse.ID == "" {
+		t.Errorf("expected ID to be populated")
+	}
+
+	if event.ToolUse.Name != "search" {
+		t.Errorf("expected Name 'search', got %q", event.ToolUse.Name)
+	}
+
+	if event.ToolUse.Input == nil {
+		t.Fatalf("expected Input to be non-nil")
+	}
+
+	if query, ok := event.ToolUse.Input["query"].(string); !ok || query != "test" {
+		t.Errorf("expected Input[query] 'test', got %v", event.ToolUse.Input["query"])
 	}
 }
 

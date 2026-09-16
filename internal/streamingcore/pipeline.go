@@ -13,6 +13,8 @@ import (
 // Pipeline orchestrates the parsing and thinking detection across streaming events.
 // It stitches parsers.Parser output (Task 1) through thinkingparser.Parser (Task 2)
 // into a unified KiroEvent stream.
+// Pipeline is not safe for concurrent use. Each stream should own one Pipeline instance
+// (spec §5.4, D4 explicit-loop model).
 type Pipeline struct {
 	parser   *parsers.Parser
 	thinking *thinkingparser.Parser
@@ -223,6 +225,7 @@ func extractToolUseData(toolCallValue map[string]any) *ToolUseData {
 
 		if argsVal, ok := funcVal["arguments"].(string); ok {
 			input = make(map[string]any)
+			// TODO(logging): log unmarshal error once observability lands
 			_ = json.Unmarshal([]byte(argsVal), &input)
 		}
 	}

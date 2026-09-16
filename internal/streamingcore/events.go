@@ -35,12 +35,6 @@ type KiroEvent struct {
 
 	// Error holds error/diagnosis message (for Kind == "error")
 	Error string
-
-	// IsFirstThinkingChunk indicates if this is the first thinking chunk
-	IsFirstThinkingChunk bool
-
-	// IsLastThinkingChunk indicates if this is the last thinking chunk
-	IsLastThinkingChunk bool
 }
 
 // ToolUseData represents a function call invocation within a KiroEvent.
