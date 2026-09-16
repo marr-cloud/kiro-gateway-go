@@ -46,6 +46,15 @@ func (s *jsonFileSource) Load() (Credentials, error) {
 		}
 		return creds, fmt.Errorf("auth: reading %s: %w", s.path, err)
 	}
+	if len(data) == 0 {
+		// Fichero de 0 bytes: se trata igual que "ausente" (no hay nada
+		// que parsear), no como un error de JSON. Alinea Load con Save,
+		// que ya trata un fichero de 0 bytes como existing_data = {}
+		// (ver más abajo) — antes de este fix, Load fallaba con
+		// "unexpected end of JSON input" sobre exactamente el mismo
+		// fichero que Save consideraba válido.
+		return creds, nil
+	}
 
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -62,7 +71,15 @@ func (s *jsonFileSource) Load() (Credentials, error) {
 		creds.ProfileARN = v
 	}
 	if v, ok := raw["region"].(string); ok {
+		// El original asigna el mismo data['region'] tanto a
+		// self._sso_region como a self._detected_api_region
+		// (auth.py:424-428, dos asignaciones seguidas). Region y
+		// SSORegion representan esos dos atributos por separado (ver el
+		// comentario de Credentials en types.go); para el JSON source
+		// siempre llevan el mismo valor — solo la SQLite de la Task 4
+		// puede poblarlos de forma independiente.
 		creds.Region = v
+		creds.SSORegion = v
 	}
 	if v, ok := raw["clientId"].(string); ok {
 		creds.ClientID = v

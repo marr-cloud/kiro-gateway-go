@@ -92,6 +92,25 @@ type Manager struct {
 	apiRegion string
 }
 
+// Aserciones en tiempo de compilación (fix round 1, Minor #2):
+//   - *Manager satisface utils.TokenProvider (AccessToken + ProfileARN),
+//     la interfaz que internal/utils.GetKiroHeaders exige.
+//   - *Manager también satisface la FORMA de la interfaz opcional
+//     forceRefresher que internal/httpclient busca por type assertion en
+//     el camino de 403 (internal/httpclient/client.go:145-160). Esa
+//     interfaz es no exportada allí — no se puede importar — así que aquí
+//     se restata su forma exacta (mismo nombre y firma de método) solo
+//     para fijar la aserción; si algún día diverge de httpclient, este
+//     compilador NO lo detectaría (son tipos estructuralmente iguales, no
+//     el mismo tipo), pero al menos deja constancia explícita del
+//     contrato en vez de depender solo de los tests de httpclient.
+var (
+	_ utils.TokenProvider = (*Manager)(nil)
+	_ interface {
+		ForceRefresh(context.Context) (string, error)
+	} = (*Manager)(nil)
+)
+
 // NewManager construye un Manager en modo "cuenta única": la variante de
 // un solo argumento que exige el contrato de la Task. Es azúcar sobre
 // NewManagerForAccount con el override de región por cuenta vacío.
@@ -158,6 +177,20 @@ func NewManagerForAccount(cfg *config.Config, apiRegionOverride string) (*Manage
 // mergeCredentials copia a dst solo los campos que loaded trae poblados,
 // dejando intactos los que ya tenía dst — el equivalente Go de los `if
 // 'campo' in data:` del original (auth.py:417-439).
+//
+// Deviación deliberada (ruling de la Task 2, fix round 1, Important #2):
+// el original pisa el campo de todas formas cuando la clave está presente
+// en el JSON, incluso si su valor es la cadena vacía (`if 'refreshToken' in
+// data: self._refresh_token = data['refreshToken']` — la comprobación es
+// sobre la CLAVE, no sobre el valor). Aquí solo se pisa cuando el valor
+// cargado es no vacío: un `"refreshToken": ""` explícito en el JSON NO
+// borra un valor previo (p.ej. el de *config.Config). No es un patrón que
+// el original documente como funcionalidad («borrar poniendo cadena
+// vacía»), y el idiom de Go para "ausente" es el cero del tipo, así que se
+// mantiene el comportamiento Go-idiomático en vez de replicar la
+// comprobación de presencia de clave — ver
+// TestMergeCredentials_EmptyStringDoesNotOverwrite, que fija este
+// comportamiento como contrato explícito para que no derive sin querer.
 func mergeCredentials(dst *Credentials, loaded Credentials) {
 	if loaded.RefreshToken != "" {
 		dst.RefreshToken = loaded.RefreshToken
@@ -170,6 +203,9 @@ func mergeCredentials(dst *Credentials, loaded Credentials) {
 	}
 	if loaded.Region != "" {
 		dst.Region = loaded.Region
+	}
+	if loaded.SSORegion != "" {
+		dst.SSORegion = loaded.SSORegion
 	}
 	if !loaded.ExpiresAt.IsZero() {
 		dst.ExpiresAt = loaded.ExpiresAt
@@ -224,12 +260,25 @@ func detectedRegion(c Credentials) string {
 //     — este paquete no llama a os.Getenv por su cuenta, ver el comentario
 //     de package config sobre ser "la ÚNICA fuente de configuración
 //     derivada del entorno".
-//  3. región detectada de la credencial (campo 'region', o ARN si falta).
-//  4. región "sso" de la credencial como fallback adicional (en el JSON de
-//     hoy coincide siempre con el nivel 3; se mantiene separado para que
-//     la Task 4 - SQLite, donde sso_region y detected_api_region sí pueden
-//     diferir - reutilice esta misma función sin cambios).
-//  5. baseRegion (KIRO_REGION ya con su propio default aplicado).
+//  3. región "detectada" de la credencial: Credentials.Region (campo
+//     'region' del JSON, o el ARN si falta — ver detectedRegion).
+//  4. región "sso" de la credencial: Credentials.SSORegion. Para el JSON
+//     source de hoy vale siempre lo mismo que el nivel 3 (auth.py:424-425
+//     asigna el mismo data['region'] a los dos atributos), así que este
+//     nivel nunca cambia el resultado hoy — pero es un campo
+//     independiente, no una repetición de la comprobación del nivel 3
+//     (fix round 1, Important #1: la versión anterior repetía `c.Region`,
+//     que detectedRegion ya había consultado, y por tanto era código
+//     muerto de verdad). La Task 4 (SQLite) puede poblar Region (desde el
+//     ARN de la tabla `state`) y SSORegion (desde el `region` del token o
+//     del device-registration) con valores distintos — ahí este nivel sí
+//     puede ganar.
+//
+// baseRegion (KIRO_REGION, con su propio default ya aplicado por el único
+// caller, NewManagerForAccount) es el último recurso y SIEMPRE llega no
+// vacío: no hay un nivel 5 adicional que caiga a defaultRegion aquí — eso
+// sería, de nuevo, código muerto dado el precondition del caller (fix round
+// 1, Important #1).
 func resolveAPIRegion(explicit string, cfg *config.Config, c Credentials, baseRegion string) string {
 	if explicit != "" {
 		return explicit
@@ -240,13 +289,10 @@ func resolveAPIRegion(explicit string, cfg *config.Config, c Credentials, baseRe
 	if r := detectedRegion(c); r != "" {
 		return r
 	}
-	if c.Region != "" {
-		return c.Region
+	if c.SSORegion != "" {
+		return c.SSORegion
 	}
-	if baseRegion != "" {
-		return baseRegion
-	}
-	return defaultRegion
+	return baseRegion
 }
 
 // detectAuthType decide el AuthType a partir de qué campos trae c, más la
@@ -330,6 +376,14 @@ func (m *Manager) ProfileARN() string {
 	defer m.mu.Unlock()
 	return m.creds.ProfileARN
 }
+
+// Region, APIHost, QHost y Type leen sin m.mu porque region/apiRegion/
+// authType los fija NewManagerForAccount una sola vez y nada más los muta
+// después — a diferencia de creds.ProfileARN, que ProfileARN() sí protege
+// porque Task 5 lo actualiza en un refresco real. Si una tarea futura
+// vuelve mutable alguno de estos tres (p.ej. authType cambiando ante un
+// fallo de refresco), hay que pasar su accessor a tomar m.mu también (fix
+// round 1, Minor #3).
 
 // Region devuelve la región base/SSO — self._region del original
 // (auth.py:955-957). No es la región de API resuelta; ver el comentario del

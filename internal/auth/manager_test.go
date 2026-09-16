@@ -207,6 +207,24 @@ func TestRegionPrecedence(t *testing.T) {
 	})
 }
 
+// TestResolveAPIRegion_SSORegionFallbackIsLive exercises resolveAPIRegion
+// directly at level 4 (Credentials.SSORegion), which the JSON source alone
+// can never reach observably through NewManager (it always sets Region and
+// SSORegion to the same value — see json_source.go's Load). Fix round 1,
+// Important #1: the reviewer found the pre-fix level 4 branch provably
+// dead (it re-checked c.Region, which detectedRegion — level 3 — already
+// consumed). This test proves the fixed level 4 (a genuinely independent
+// Credentials.SSORegion field) is reachable, ahead of Task 4's SQLite
+// source actually populating Region and SSORegion with different values.
+func TestResolveAPIRegion_SSORegionFallbackIsLive(t *testing.T) {
+	cfg := &config.Config{}                       // sin override KIRO_API_REGION
+	creds := Credentials{SSORegion: "me-south-1"} // Region y ProfileARN vacíos: nivel 3 no resuelve nada
+	got := resolveAPIRegion("", cfg, creds, "us-east-1")
+	if want := "me-south-1"; got != want {
+		t.Errorf("resolveAPIRegion() = %q, want %q (nivel 4, SSORegion)", got, want)
+	}
+}
+
 // --- Paso 1, bullet 3: Fingerprint estable --------------------------------
 
 func TestManager_FingerprintIsStable(t *testing.T) {
@@ -353,6 +371,85 @@ func TestAuthTypeDetection(t *testing.T) {
 			t.Errorf("Type() = %v, want %v", got, want)
 		}
 	})
+
+	// Fix round 1, Important #3: ruling #3 of the Task 2 report says
+	// AWSSSO detection requires BOTH clientId and clientSecret
+	// (auth.py:241), correcting the brief's "clientId presente" shorthand.
+	// That corrected behavior had no regression test — add one. Per
+	// detectAuthType's fall-through order (manager.go), clientId alone
+	// (no clientSecret, no accessToken/profileArn) lands on the
+	// "only refreshToken" branch, i.e. RefreshOnly.
+	t.Run("clientId without clientSecret is not AWSSSO", func(t *testing.T) {
+		dir := t.TempDir()
+		path := writeCredsFile(t, dir, map[string]any{
+			"refreshToken": "rt",
+			"clientId":     "client-abc",
+		})
+		cfg := loadCfg(t, map[string]string{"KIRO_CREDS_FILE": path})
+		mgr, err := NewManager(cfg)
+		if err != nil {
+			t.Fatalf("NewManager: %v", err)
+		}
+		if got := mgr.Type(); got == AuthTypeAWSSSO {
+			t.Errorf("Type() = %v, want anything but AuthTypeAWSSSO (clientSecret is missing)", got)
+		}
+		if got, want := mgr.Type(), AuthTypeRefreshOnly; got != want {
+			t.Errorf("Type() = %v, want %v", got, want)
+		}
+	})
+}
+
+// Fix round 1, Important #4: ruling #7 of the Task 2 report (a malformed
+// creds JSON file is a fatal NewManager error, deviating from upstream's
+// silent swallow) was implemented but not regression-tested. Add coverage.
+func TestNewManager_FailsOnMalformedCredsJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "creds.json")
+	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
+		t.Fatalf("writing malformed creds fixture: %v", err)
+	}
+	cfg := loadCfg(t, map[string]string{"KIRO_CREDS_FILE": path})
+
+	mgr, err := NewManager(cfg)
+	if err == nil {
+		t.Fatal("NewManager: expected an error for malformed creds JSON, got nil")
+	}
+	if mgr != nil {
+		t.Errorf("NewManager: expected a nil Manager on error, got %#v", mgr)
+	}
+}
+
+// Fix round 1, Important #2: mergeCredentials only overwrites dst's fields
+// when loaded's value is non-empty — a deliberate deviation from upstream,
+// which overwrites whenever the JSON key is merely PRESENT, even with an
+// empty-string value (auth.py:417-439, `if 'refreshToken' in data: ...`
+// checks key presence, not truthiness). This test pins the current,
+// Go-idiomatic behavior as an explicit contract so it can't drift silently.
+func TestMergeCredentials_EmptyStringDoesNotOverwrite(t *testing.T) {
+	dst := Credentials{
+		RefreshToken: "keep-refresh",
+		ProfileARN:   "keep-arn",
+		Region:       "keep-region",
+	}
+	mergeCredentials(&dst, Credentials{
+		RefreshToken: "",          // empty: must NOT clear dst.RefreshToken
+		ProfileARN:   "new-arn",   // non-empty: must overwrite
+		Region:       "",          // empty: must NOT clear dst.Region
+		AccessToken:  "new-token", // non-empty on a previously-empty field
+	})
+
+	if dst.RefreshToken != "keep-refresh" {
+		t.Errorf("RefreshToken = %q, want unchanged %q", dst.RefreshToken, "keep-refresh")
+	}
+	if dst.ProfileARN != "new-arn" {
+		t.Errorf("ProfileARN = %q, want overwritten to %q", dst.ProfileARN, "new-arn")
+	}
+	if dst.Region != "keep-region" {
+		t.Errorf("Region = %q, want unchanged %q", dst.Region, "keep-region")
+	}
+	if dst.AccessToken != "new-token" {
+		t.Errorf("AccessToken = %q, want %q", dst.AccessToken, "new-token")
+	}
 }
 
 // --- Paso 1, bullet 6: write-through (alcance reducido, ver informe) ------
@@ -423,5 +520,28 @@ func TestJSONFileSource_SavePreservesUnknownFields(t *testing.T) {
 	}
 	if m["accessToken"] != "at-new" {
 		t.Errorf("accessToken = %#v, want at-new", m["accessToken"])
+	}
+}
+
+// TestJSONFileSource_LoadTreats0ByteFileAsAbsent fixes fix round 1, Minor
+// #1: before this fix, Load() failed with "unexpected end of JSON input"
+// on a 0-byte creds file while Save() already treated 0 bytes as an empty
+// existing_data ({}) — an inconsistency between the two halves of the same
+// Source. A 0-byte file now behaves like a missing one: non-fatal, empty
+// Credentials.
+func TestJSONFileSource_LoadTreats0ByteFileAsAbsent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "creds.json")
+	if err := os.WriteFile(path, []byte{}, 0o600); err != nil {
+		t.Fatalf("writing empty creds fixture: %v", err)
+	}
+
+	src := newJSONFileSource(path)
+	got, err := src.Load()
+	if err != nil {
+		t.Fatalf("Load: expected a 0-byte file to be non-fatal, got: %v", err)
+	}
+	if got != (Credentials{}) {
+		t.Errorf("Load() = %#v, want a zero-value Credentials{}", got)
 	}
 }

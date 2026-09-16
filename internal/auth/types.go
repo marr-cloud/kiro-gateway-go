@@ -71,12 +71,23 @@ type Credentials struct {
 	AccessToken  string
 	RefreshToken string
 	ProfileARN   string
-	// Region es la región "de origen" de la credencial: el campo `region`
-	// del JSON de Kiro Desktop, o (Task 4) el `region` de la SQLite. Es el
-	// equivalente de self._sso_region en el original — no necesariamente
-	// la región de API final, que resulta de la precedencia completa (ver
-	// resolveAPIRegion en manager.go).
-	Region       string
+	// Region es la región "detectada" de la credencial — el equivalente de
+	// self._detected_api_region en el original: para el JSON de Kiro
+	// Desktop, el campo `region` tal cual (auth.py:426-428); para la
+	// SQLite de kiro-cli (Task 4), la región extraída del ARN en la tabla
+	// `state` (auth.py:357-364). Es el nivel 3 de resolveAPIRegion, NO
+	// necesariamente la región de API final.
+	Region string
+	// SSORegion es la región "sso" de la credencial — el equivalente de
+	// self._sso_region en el original: para el JSON de hoy se rellena con
+	// el mismo campo `region` que Region (auth.py:424-425 pone las dos
+	// asignaciones seguidas, mismo valor). Para la SQLite (Task 4) puede
+	// venir de un campo distinto (`region` del token o del
+	// device-registration, auth.py:300-303, :339-342) y por tanto diferir
+	// de Region — de ahí que sea un campo propio en vez de reutilizar
+	// Region: es el nivel 4 de resolveAPIRegion, el fallback que solo
+	// importa cuando el nivel 3 no resolvió nada.
+	SSORegion    string
 	ExpiresAt    time.Time
 	ClientID     string
 	ClientSecret string
