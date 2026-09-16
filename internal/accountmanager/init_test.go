@@ -5,66 +5,12 @@ package accountmanager
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/auth"
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
 )
-
-// TestInitialize_CallsRefresh tests that Initialize calls refresh for each account
-func TestInitialize_CallsRefresh(t *testing.T) {
-	cfg := &config.Config{
-		KiroRegion:      "us-east-1",
-		RefreshToken:    "test-token",
-		AccountCacheTTL: 3600,
-	}
-	m, err := NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
-
-	// Create auth manager for runtime endpoint (default)
-	authMgr, err := auth.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager auth failed: %v", err)
-	}
-
-	m.mu.Lock()
-	m.accounts = append(m.accounts,
-		&Account{
-			ID:      "runtime-account",
-			Enabled: true,
-			Auth:    authMgr,
-			Stats:   AccountStats{},
-			Models:  ModelAccountList{},
-		},
-	)
-	m.mu.Unlock()
-
-	// Manually call refreshAccountModels instead of Initialize
-	err = m.refreshAccountModels(context.Background(), "runtime-account")
-	if err != nil {
-		t.Fatalf("refreshAccountModels failed: %v", err)
-	}
-
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	// Should have fallback models (runtime endpoint doesn't make HTTP calls)
-	if len(m.accounts[0].Models.Models) != len(fallbackModels) {
-		t.Errorf("Expected %d models, got %d", len(fallbackModels), len(m.accounts[0].Models.Models))
-	}
-	if m.accounts[0].Models.LoadedAt.IsZero() {
-		t.Errorf("LoadedAt should not be zero")
-	}
-	if m.accounts[0].Models.TTL == 0 {
-		t.Errorf("TTL should not be zero")
-	}
-}
 
 // TestGetAllAvailableModels returns union of models from all enabled accounts
 func TestGetAllAvailableModels(t *testing.T) {
@@ -201,52 +147,6 @@ func TestGetFirstAccount_ReturnsNilEmpty(t *testing.T) {
 	}
 }
 
-// TestRefreshAccountModels_PopulatesModels tests that refreshAccountModels populates models
-func TestRefreshAccountModels_PopulatesModels(t *testing.T) {
-	cfg := &config.Config{
-		KiroRegion:      "us-east-1",
-		RefreshToken:    "test-token",
-		AccountCacheTTL: 3600,
-	}
-	m, err := NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
-
-	authMgr, err := auth.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager auth failed: %v", err)
-	}
-
-	m.mu.Lock()
-	m.accounts = append(m.accounts,
-		&Account{
-			ID:      "account1",
-			Enabled: true,
-			Auth:    authMgr,
-			Models:  ModelAccountList{}, // Empty
-		},
-	)
-	m.mu.Unlock()
-
-	// Call refreshAccountModels directly
-	err = m.refreshAccountModels(context.Background(), "account1")
-	if err != nil {
-		t.Fatalf("refreshAccountModels failed: %v", err)
-	}
-
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	// Should have models populated
-	if len(m.accounts[0].Models.Models) == 0 {
-		t.Errorf("Models not populated")
-	}
-	if m.accounts[0].Models.LoadedAt.IsZero() {
-		t.Errorf("LoadedAt is zero")
-	}
-}
-
 // TestRefreshAccountModels_NotExpiredNoOp tests that non-expired TTL doesn't refresh
 func TestRefreshAccountModels_NotExpiredNoOp(t *testing.T) {
 	cfg := &config.Config{
@@ -323,8 +223,8 @@ func TestFallbackModels(t *testing.T) {
 	}
 }
 
-// TestInitialize_ExpiredTTLRefreshes tests that expired TTL triggers refresh
-func TestInitialize_ExpiredTTLRefreshes(t *testing.T) {
+// TestRefreshAccountModels_RuntimeEndpoint verifies runtime endpoints use static models
+func TestRefreshAccountModels_RuntimeEndpoint(t *testing.T) {
 	cfg := &config.Config{
 		KiroRegion:      "us-east-1",
 		RefreshToken:    "test-token",
@@ -335,46 +235,24 @@ func TestInitialize_ExpiredTTLRefreshes(t *testing.T) {
 		t.Fatalf("NewManager failed: %v", err)
 	}
 
-	// Mock HTTP server
-	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"models": []string{"new-model"},
-		})
-	}))
-	defer server.Close()
-
-	authMgr, err := auth.NewManagerForAccount(
-		&config.Config{
-			KiroRegion:   "us-east-1",
-			RefreshToken: "test-token",
-		},
-		"", // No API region override for default runtime endpoint
-	)
+	authMgr, err := auth.NewManager(cfg)
 	if err != nil {
 		t.Fatalf("NewManager auth failed: %v", err)
 	}
 
-	// Setup account with expired TTL
 	m.mu.Lock()
 	m.accounts = append(m.accounts,
 		&Account{
-			ID:      "expired",
+			ID:      "runtime-account",
 			Enabled: true,
 			Auth:    authMgr,
-			Models: ModelAccountList{
-				Models:   []string{"old-model"},
-				LoadedAt: time.Now().Add(-2 * time.Hour), // Expired
-				TTL:      1 * time.Hour,
-			},
+			Models:  ModelAccountList{},
 		},
 	)
 	m.mu.Unlock()
 
-	// Refresh should update models
-	err = m.refreshAccountModels(context.Background(), "expired")
+	// Call refreshAccountModels - should detect runtime endpoint and use static models
+	err = m.refreshAccountModels(context.Background(), "runtime-account")
 	if err != nil {
 		t.Fatalf("refreshAccountModels failed: %v", err)
 	}
@@ -382,8 +260,14 @@ func TestInitialize_ExpiredTTLRefreshes(t *testing.T) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Should still have fallback models (runtime endpoint doesn't fetch)
-	if len(m.accounts[0].Models.Models) == 0 {
-		t.Errorf("Models should not be empty after refresh")
+	// Should have fallback models (runtime endpoint doesn't make HTTP calls)
+	if len(m.accounts[0].Models.Models) != len(fallbackModels) {
+		t.Errorf("Expected %d models, got %d", len(fallbackModels), len(m.accounts[0].Models.Models))
+	}
+	if m.accounts[0].Models.LoadedAt.IsZero() {
+		t.Errorf("LoadedAt should not be zero")
+	}
+	if m.accounts[0].Models.TTL == 0 {
+		t.Errorf("TTL should not be zero")
 	}
 }

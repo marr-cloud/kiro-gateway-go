@@ -6,13 +6,14 @@ package accountmanager
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/marr-cloud/kiro-gateway-go/internal/auth"
 )
 
 // fallbackModels is the static model catalog used when ListAvailableModels is
@@ -59,11 +60,12 @@ func (m *Manager) Initialize(ctx context.Context) error {
 		go func(account *Account) {
 			defer wg.Done()
 
-			// Acquire semaphore
+			// Acquire semaphore to limit concurrent goroutines to initConcurrency
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			// Validate credentials
+			// Validate credentials via AccessToken. Token comes from auth.Manager,
+			// which validates it against OIDC/SQLite/refresh-token sources.
 			_, err := account.Auth.AccessToken(ctx)
 			if err != nil {
 				// Mark account as disabled on auth failure
@@ -74,7 +76,8 @@ func (m *Manager) Initialize(ctx context.Context) error {
 				return
 			}
 
-			// Determine endpoint type and fetch models
+			// Determine endpoint type and fetch models.
+			// Silent fallback; refreshAccountModels handles errors internally by using static list (matches upstream).
 			_ = m.refreshAccountModels(ctx, account.ID)
 		}(acc)
 	}
@@ -105,7 +108,14 @@ func (m *Manager) refreshAccountModels(ctx context.Context, accountID string) er
 
 	// Determine endpoint type via APIHost
 	apiHost := account.Auth.APIHost()
-	isRuntime := strings.Contains(apiHost, "://runtime.")
+	var isRuntime bool
+	if m.isRuntimeEndpointOverride != nil {
+		// Test override: use the injected endpoint detection
+		isRuntime = m.isRuntimeEndpointOverride(apiHost)
+	} else {
+		// Production: check if URL contains "://runtime."
+		isRuntime = strings.Contains(apiHost, "://runtime.")
+	}
 
 	if isRuntime {
 		// Runtime endpoint: no ListAvailableModels available
@@ -123,10 +133,17 @@ func (m *Manager) refreshAccountModels(ctx context.Context, accountID string) er
 	}
 
 	// Old endpoint: fetch dynamic model list
-	// Build request
 	qhost := account.Auth.QHost()
-	listModelsURL := qhost + "/ListAvailableModels"
+	var listModelsURL string
+	if m.listURLOverride != nil {
+		// Test override: use the injected URL
+		listModelsURL = m.listURLOverride(qhost)
+	} else {
+		// Production: append endpoint path to qhost
+		listModelsURL = qhost + "/ListAvailableModels"
+	}
 
+	// Build request with query parameters per upstream account_manager.py:509-511
 	req, err := http.NewRequestWithContext(ctx, "GET", listModelsURL, nil)
 	if err != nil {
 		// Fall back to static models on request creation error
@@ -140,12 +157,44 @@ func (m *Manager) refreshAccountModels(ctx context.Context, accountID string) er
 		return nil
 	}
 
-	// Attempt to fetch models
-	models, fetchErr := fetchListAvailableModels(ctx, req, account.Auth)
-	if fetchErr != nil {
-		// Fall back to static models
+	// Add query parameters
+	q := req.URL.Query()
+	q.Set("origin", "AI_EDITOR")
+	// Add profileArn if this is a KIRO_DESKTOP account with a profile ARN
+	if account.Auth.Type() == auth.AuthTypeKiroDesktop && account.ProfileARN != "" {
+		q.Set("profileArn", account.ProfileARN)
+	}
+	req.URL.RawQuery = q.Encode()
+
+	// Attempt to fetch models using RequestWithRetry (handles 5xx retries)
+	resp, err := m.httpClient.RequestWithRetry(ctx, req, account.Auth, false)
+	var models []string
+
+	if err == nil && resp.StatusCode == http.StatusOK {
+		// Parse response body
+		defer resp.Body.Close()
+		bodyBytes, _ := io.ReadAll(resp.Body)
+
+		var data map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &data); err == nil {
+			if modelList, ok := data["models"].([]interface{}); ok {
+				models = make([]string, len(modelList))
+				for i, m := range modelList {
+					if s, ok := m.(string); ok {
+						models[i] = s
+					}
+				}
+			}
+		}
+	}
+
+	// If we couldn't fetch models, fall back to static list
+	if len(models) == 0 {
 		models = append([]string(nil), fallbackModels...)
 	}
+
+	// TODO(fase-5): apply HIDDEN_MODELS from spec §6.11 (account_manager.py:548-549)
+	// and config.py:219+ after model_resolver is available.
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -157,87 +206,6 @@ func (m *Manager) refreshAccountModels(ctx context.Context, accountID string) er
 	}
 
 	return nil
-}
-
-// fetchListAvailableModels makes a GET request to {qhost}/ListAvailableModels
-// and parses the response. Returns the model list or an error.
-func fetchListAvailableModels(ctx context.Context, req *http.Request, auth interface {
-	AccessToken(context.Context) (string, error)
-}) ([]string, error) {
-	// Get access token
-	token, err := auth.AccessToken(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// Set authorization header
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-
-	// Create a simple HTTP client with retry logic
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-	defer client.CloseIdleConnections()
-
-	// Retry logic: 3 attempts with exponential backoff
-	const maxRetries = 3
-	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		if attempt > 0 {
-			// Exponential backoff: 1s, 2s, 4s
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(time.Duration(1<<uint(attempt-1)) * time.Second):
-				// Continue
-			}
-		}
-
-		resp, err := client.Do(req.Clone(ctx))
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		defer resp.Body.Close()
-
-		// Success: parse response
-		if resp.StatusCode == http.StatusOK {
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return nil, err
-			}
-
-			var data map[string]interface{}
-			if err := json.Unmarshal(bodyBytes, &data); err != nil {
-				return nil, err
-			}
-
-			models, ok := data["models"].([]interface{})
-			if !ok {
-				return nil, nil
-			}
-
-			result := make([]string, len(models))
-			for i, m := range models {
-				if s, ok := m.(string); ok {
-					result[i] = s
-				}
-			}
-			return result, nil
-		}
-
-		// On 5xx, retry
-		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
-			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
-			continue
-		}
-
-		// On other errors, return immediately
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	return nil, lastErr
 }
 
 // GetAllAvailableModels returns the union of models from all enabled accounts.

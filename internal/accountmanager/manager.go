@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
+	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
 )
 
 // Manager gestiona múltiples cuentas de Kiro con descubrimiento, persistencia
@@ -24,6 +25,7 @@ type Manager struct {
 	mu           sync.RWMutex
 	stateFile    string
 	saveInterval time.Duration
+	httpClient   *httpclient.Client
 
 	// renameFn es la función de rename, inyectable para tests.
 	// Por defecto es os.Rename.
@@ -39,6 +41,17 @@ type Manager struct {
 	// randFloat es la función para obtener un número aleatorio en [0, 1).
 	// Inyectable para tests. Por defecto es rand.Float64.
 	randFloat func() float64
+
+	// listURLOverride es una función inyectable para tests que reemplaza el
+	// cálculo del URL de ListAvailableModels. Por defecto es nil (sin override).
+	// Usado para apuntar a servidores mock en tests.
+	listURLOverride func(qhost string) string
+
+	// isRuntimeEndpointOverride es una función inyectable para tests que
+	// reemplaza la detección de endpoint runtime. Por defecto es nil (sin override).
+	// Cuando es nil, se usa la detección estándar (apiHost contiene "://runtime.").
+	// Usado para forzar tests a tomar la rama de old-endpoint en refreshAccountModels.
+	isRuntimeEndpointOverride func(apiHost string) bool
 }
 
 // NewManager crea un nuevo Manager.
@@ -66,12 +79,18 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 		saveInterval = 10 * time.Second
 	}
 
+	httpCli, err := httpclient.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("accountmanager: create httpclient: %w", err)
+	}
+
 	m := &Manager{
 		cfg:          cfg,
 		accounts:     make([]*Account, 0),
 		stickyIdx:    0,
 		stateFile:    stateFile,
 		saveInterval: saveInterval,
+		httpClient:   httpCli,
 		renameFn:     os.Rename,
 		lastSaved:    make(map[string]AccountStats),
 		clock:        time.Now,
