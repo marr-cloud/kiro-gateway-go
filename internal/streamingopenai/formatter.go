@@ -10,7 +10,6 @@ import (
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/sse"
 	"github.com/marr-cloud/kiro-gateway-go/internal/streamingcore"
-	"github.com/marr-cloud/kiro-gateway-go/internal/tokenizer"
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
 )
 
@@ -36,18 +35,16 @@ type Formatter struct {
 	fullContent            string
 	fullThinkingContent    string
 	toolCallsFromStream    []map[string]any
-	creditsUsed            float64           // metering data float value
+	creditsUsedRaw         json.RawMessage // metering_data, echoed verbatim as usage.credits_used (streaming_openai.py:405-406)
 	contextUsagePercentage float64
-	completionTokens       int
 	thinkingHandling       ThinkingHandling
-	receivedStopSignal     bool              // did we get a "usage" or "context_usage" event?
-	requestMessages        []map[string]any  // for fallback prompt token calculation
-	requestTools           []map[string]any  // for fallback prompt token calculation
+	receivedContextUsage   bool              // upstream `received_context_usage`: a context_usage event arrived (streaming_core.py calculate loop)
+	requestMessages        []json.RawMessage // request_messages fallback (streaming_openai.py:317-320)
+	requestTools           []json.RawMessage // request_tools fallback (streaming_openai.py:319-320)
 }
 
 // New creates a new Formatter for the given model.
 // thinkingHandling determines how to format thinking content (defaults to AsContent).
-// requestMessages and requestTools are used for fallback prompt_tokens calculation if context_usage is not available.
 func New(model string, thinkingHandling ...ThinkingHandling) *Formatter {
 	handling := AsContent
 	if len(thinkingHandling) > 0 {
@@ -63,8 +60,11 @@ func New(model string, thinkingHandling ...ThinkingHandling) *Formatter {
 	}
 }
 
-// SetRequestContext sets the request messages and tools for prompt token calculation fallback.
-func (f *Formatter) SetRequestContext(messages []map[string]any, tools []map[string]any) {
+// SetRequestContext sets the original request messages and tools, each as raw
+// JSON bytes (original key order preserved). They feed the fallback
+// prompt_tokens calculation used when Kiro doesn't report context_usage_percentage
+// (.upstream/kiro/streaming_openai.py:313-323).
+func (f *Formatter) SetRequestContext(messages []json.RawMessage, tools []json.RawMessage) {
 	f.requestMessages = messages
 	f.requestTools = tools
 }
@@ -91,12 +91,16 @@ func (f *Formatter) Handle(ev streamingcore.KiroEvent, w io.Writer) error {
 		}
 
 	case "usage":
-		// usage event is just a float for credits_used
-		f.receivedStopSignal = true
+		// metering_data only counts as "received" when truthy, matching
+		// `elif event.type == "usage" and event.usage: metering_data = event.usage`
+		// (.upstream/kiro/streaming_core.py:320).
+		if isJSONTruthy(ev.UsageRaw) {
+			f.creditsUsedRaw = ev.UsageRaw
+		}
 
 	case "context_usage":
 		f.contextUsagePercentage = ev.ContextUsage
-		f.receivedStopSignal = true
+		f.receivedContextUsage = true
 	}
 
 	return nil
@@ -112,15 +116,30 @@ func (f *Formatter) Finish(w io.Writer) error {
 		}
 	}
 
-	// Calculate tokens for completion
-	f.completionTokens = len(tokenizer.EncodeOrdinary(f.fullContent + f.fullThinkingContent))
+	// completion_tokens uses the Claude correction factor by default, matching
+	// `count_tokens(full_content + full_thinking_content)` (streaming_openai.py:305),
+	// which calls count_tokens with apply_claude_correction defaulting to True.
+	completionTokens := countTokens(f.fullContent+f.fullThinkingContent, true)
 
-	// Determine finish_reason
-	finishReason := f.determineFinishReason()
+	// stream_completed_normally = received_usage or received_context_usage
+	// (streaming_openai.py:272-274).
+	streamCompletedNormally := len(f.creditsUsedRaw) > 0 || f.receivedContextUsage
+	contentTruncated := !streamCompletedNormally && len(f.fullContent) > 0 && len(f.toolCallsFromStream) == 0
+
+	var finishReason string
+	switch {
+	case contentTruncated:
+		finishReason = "length"
+	case len(f.toolCallsFromStream) > 0:
+		finishReason = "tool_calls"
+	default:
+		finishReason = "stop"
+	}
+
+	promptTokens, totalTokens := f.calculateTokens(completionTokens)
 
 	// Emit final chunk with usage
-	usage := f.calculateUsage()
-	if err := f.emitFinalChunk(finishReason, usage, w); err != nil {
+	if err := f.emitFinalChunk(finishReason, promptTokens, completionTokens, totalTokens, w); err != nil {
 		return err
 	}
 
@@ -134,10 +153,10 @@ func (f *Formatter) Finish(w io.Writer) error {
 
 // chunkDelta holds the delta object in a chunk, with ordered fields.
 type chunkDelta struct {
-	Role             string          `json:"role,omitempty"`
-	Content          string          `json:"content,omitempty"`
-	ReasoningContent string          `json:"reasoning_content,omitempty"`
-	ToolCalls        []toolCall      `json:"tool_calls,omitempty"`
+	Role             string     `json:"role,omitempty"`
+	Content          string     `json:"content,omitempty"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+	ToolCalls        []toolCall `json:"tool_calls,omitempty"`
 }
 
 // toolCall holds a tool call in the delta.
@@ -158,12 +177,15 @@ type chunkChoice struct {
 	FinishReason *string    `json:"finish_reason"`
 }
 
-// chunkUsage holds the usage object in a chunk.
+// chunkUsage holds the usage object in a chunk. CreditsUsed carries the raw
+// bytes of whatever the "usage" event's payload was (number or object) so it
+// round-trips exactly like Python's `final_chunk["usage"]["credits_used"] =
+// metering_data` (streaming_openai.py:405-406) — no derived/reformatted value.
 type chunkUsage struct {
-	PromptTokens     int     `json:"prompt_tokens"`
-	CompletionTokens int     `json:"completion_tokens"`
-	TotalTokens      int     `json:"total_tokens"`
-	CreditsUsed      *float64 `json:"credits_used,omitempty"`
+	PromptTokens     int             `json:"prompt_tokens"`
+	CompletionTokens int             `json:"completion_tokens"`
+	TotalTokens      int             `json:"total_tokens"`
+	CreditsUsed      json.RawMessage `json:"credits_used,omitempty"`
 }
 
 // chatCompletionChunk is the full chunk structure with ordered fields.
@@ -245,23 +267,15 @@ func (f *Formatter) emitToolCallsChunk(toolCalls []map[string]any, w io.Writer) 
 }
 
 // emitFinalChunk emits the final chunk with finish_reason and usage.
-func (f *Formatter) emitFinalChunk(finishReason string, usage map[string]any, w io.Writer) error {
+func (f *Formatter) emitFinalChunk(finishReason string, promptTokens, completionTokens, totalTokens int, w io.Writer) error {
 	chunk := f.makeChunk(chunkDelta{}, &finishReason)
 
-	// Convert usage map to chunkUsage struct
-	chunkUsage := &chunkUsage{
-		PromptTokens:     toInt(usage["prompt_tokens"]),
-		CompletionTokens: toInt(usage["completion_tokens"]),
-		TotalTokens:      toInt(usage["total_tokens"]),
+	chunk.Usage = &chunkUsage{
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		TotalTokens:      totalTokens,
+		CreditsUsed:      f.creditsUsedRaw,
 	}
-
-	if creditsUsed, ok := usage["credits_used"]; ok {
-		if f, isFloat := creditsUsed.(float64); isFloat {
-			chunkUsage.CreditsUsed = &f
-		}
-	}
-
-	chunk.Usage = chunkUsage
 
 	data, err := json.Marshal(chunk)
 	if err != nil {
@@ -289,18 +303,6 @@ func (f *Formatter) makeChunk(delta chunkDelta, finishReason *string) *chatCompl
 	}
 }
 
-// toInt converts a value to int.
-func toInt(v any) int {
-	switch val := v.(type) {
-	case int:
-		return val
-	case float64:
-		return int(val)
-	default:
-		return 0
-	}
-}
-
 // toolUseToOpenAI converts a ToolUseData to the OpenAI tool call format.
 func (f *Formatter) toolUseToOpenAI(tu *streamingcore.ToolUseData) map[string]any {
 	// Marshal Input to JSON string
@@ -317,96 +319,34 @@ func (f *Formatter) toolUseToOpenAI(tu *streamingcore.ToolUseData) map[string]an
 	}
 }
 
-// determineFinishReason determines the finish reason based on what was emitted.
-// finish_reason = "stop" when normal completion,
-//   "tool_calls" when tool calls were emitted,
-//   "length" when content was truncated (no completion signal received).
-func (f *Formatter) determineFinishReason() string {
-	if len(f.toolCallsFromStream) > 0 {
-		return "tool_calls"
-	}
-
-	// If we received a stop signal (usage or context_usage event), finish with "stop"
-	if f.receivedStopSignal {
-		return "stop"
-	}
-
-	// If we have content but no stop signal, it was truncated
-	if len(f.fullContent) > 0 {
-		return "length"
-	}
-
-	return "stop"
-}
-
-// calculateUsage calculates the token usage for the response.
-func (f *Formatter) calculateUsage() map[string]any {
-	promptTokens := 0
-
-	// If we have context_usage_percentage, use it to calculate prompt_tokens
+// calculateTokens computes (prompt_tokens, total_tokens) from completionTokens,
+// mirroring calculate_tokens_from_context_usage plus its caller's fallback
+// (.upstream/kiro/streaming_core.py:337-362, streaming_openai.py:307-323):
+//
+//  1. context_usage_percentage > 0: total = int(pct/100 * max_input_tokens),
+//     prompt = max(0, total - completion). total_tokens is the API-derived
+//     total, NOT prompt+completion.
+//  2. Otherwise, if request_messages were supplied: prompt = count_message_tokens
+//     + count_tools_tokens (no Claude correction), total = prompt + completion.
+//  3. Otherwise: prompt = 0, total = completion.
+func (f *Formatter) calculateTokens(completionTokens int) (promptTokens, totalTokens int) {
 	if f.contextUsagePercentage > 0 {
-		const defaultMaxInputTokens = 200000
-		totalContextUsed := int(float64(defaultMaxInputTokens) * f.contextUsagePercentage)
-		promptTokens = totalContextUsed - f.completionTokens
+		// TODO(fase-6): pull the model's real max input tokens from the
+		// model resolver/cache (model_cache.get_max_input_tokens(model) in
+		// streaming_core.py:356); 200000 is upstream's fallback default.
+		const maxInputTokens = 200000
+		totalTokens = int((f.contextUsagePercentage / 100.0) * float64(maxInputTokens))
+		promptTokens = totalTokens - completionTokens
 		if promptTokens < 0 {
 			promptTokens = 0
 		}
-	} else if f.requestMessages != nil {
-		// Fallback: count tokens from request_messages and request_tools
-		// This matches upstream's count_message_tokens + count_tools_tokens behavior
-		promptTokens = f.countRequestTokens()
+		return promptTokens, totalTokens
 	}
 
-	usage := map[string]any{
-		"prompt_tokens":     promptTokens,
-		"completion_tokens": f.completionTokens,
-		"total_tokens":      promptTokens + f.completionTokens,
+	if len(f.requestMessages) > 0 {
+		promptTokens = countMessageTokens(f.requestMessages) + countToolsTokens(f.requestTools)
+		return promptTokens, promptTokens + completionTokens
 	}
 
-	// Add credits_used if we have it
-	if f.creditsUsed > 0 {
-		usage["credits_used"] = f.creditsUsed
-	}
-
-	return usage
-}
-
-// countRequestTokens estimates prompt tokens by tokenizing the request messages and tools.
-// This is a simplified approximation matching upstream's behavior when context_usage is not available.
-func (f *Formatter) countRequestTokens() int {
-	count := 0
-
-	// Count tokens from messages
-	if f.requestMessages != nil {
-		for _, msg := range f.requestMessages {
-			// Count role: "assistant", "user", etc.
-			if role, ok := msg["role"]; ok {
-				if s, isStr := role.(string); isStr {
-					count += len(tokenizer.EncodeOrdinary(s))
-				}
-			}
-
-			// Count content
-			if content, ok := msg["content"]; ok {
-				switch c := content.(type) {
-				case string:
-					count += len(tokenizer.EncodeOrdinary(c))
-				default:
-					// Content blocks or other structures
-					if b, err := json.Marshal(c); err == nil {
-						count += len(tokenizer.EncodeOrdinary(string(b)))
-					}
-				}
-			}
-		}
-	}
-
-	// Count tokens from tools
-	if f.requestTools != nil {
-		if b, err := json.Marshal(f.requestTools); err == nil {
-			count += len(tokenizer.EncodeOrdinary(string(b)))
-		}
-	}
-
-	return count
+	return 0, completionTokens
 }

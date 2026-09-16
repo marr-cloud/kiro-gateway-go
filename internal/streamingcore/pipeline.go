@@ -73,8 +73,9 @@ func (p *Pipeline) Feed(chunk []byte) []KiroEvent {
 				if usageMap, ok := usageVal.(map[string]any); ok {
 					usageData := extractUsageData(usageMap)
 					events = append(events, KiroEvent{
-						Kind:  "usage",
-						Usage: usageData,
+						Kind:     "usage",
+						Usage:    usageData,
+						UsageRaw: extractUsageRaw(parserEvent.Raw),
 					})
 				}
 			}
@@ -160,6 +161,21 @@ func (p *Pipeline) Finish() []KiroEvent {
 	}
 
 	return events
+}
+
+// extractUsageRaw pulls the raw "usage" JSON value out of an event's raw
+// bytes (e.g. {"usage": {...}}), preserving the original key order and
+// number formatting so it can be echoed verbatim as `credits_used`
+// (.upstream/kiro/streaming_openai.py:405-406). Returns nil if raw doesn't
+// decode or carries no "usage" key.
+func extractUsageRaw(raw []byte) json.RawMessage {
+	var envelope struct {
+		Usage json.RawMessage `json:"usage"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil
+	}
+	return envelope.Usage
 }
 
 // extractUsageData converts a usage map from the parser into a UsageData struct.

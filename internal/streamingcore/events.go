@@ -6,6 +6,8 @@
 // objects consumed by streaming formatters (streamingopenai, streaminganthropic).
 package streamingcore
 
+import "encoding/json"
+
 // KiroEvent represents a unified event from the Kiro API stream.
 // This format is API-agnostic and can be converted to both OpenAI and Anthropic formats.
 type KiroEvent struct {
@@ -29,6 +31,16 @@ type KiroEvent struct {
 
 	// Usage holds token usage metrics (for Kind == "usage")
 	Usage *UsageData
+
+	// UsageRaw holds the raw JSON bytes of the usage payload as received
+	// (for Kind == "usage"), preserving key order and original number
+	// formatting (e.g. "1.0" vs "1"). Downstream formatters pass this
+	// through verbatim as `credits_used`, matching upstream's
+	// `final_chunk["usage"]["credits_used"] = metering_data`
+	// (.upstream/kiro/streaming_openai.py:405-406), which echoes whatever
+	// shape the Kiro API sent — not necessarily the typed Input/Output/
+	// CacheRead/CacheCreation breakdown captured in Usage above.
+	UsageRaw json.RawMessage
 
 	// ContextUsage holds context usage percentage (for Kind == "context_usage")
 	ContextUsage float64

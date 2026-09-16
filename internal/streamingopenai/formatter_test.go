@@ -48,9 +48,12 @@ func testFormatterCase(t *testing.T, c testutil.Case) {
 		}
 	}
 
-	// Extract request_messages and request_tools for prompt token fallback calculation
-	var requestMessages []map[string]any
-	var requestTools []map[string]any
+	// Extract request_messages and request_tools for prompt token fallback calculation.
+	// Kept as raw JSON (not map[string]any) so nested key order survives into
+	// countMessageTokens/countToolsTokens (needed for pyjson.Dumps parity on
+	// tool_use "input" / tool "parameters" dumps).
+	var requestMessages []json.RawMessage
+	var requestTools []json.RawMessage
 	if requestMessagesRaw, ok := kwargs["request_messages"]; ok && requestMessagesRaw != nil {
 		_ = json.Unmarshal(requestMessagesRaw, &requestMessages)
 	}
@@ -74,24 +77,23 @@ func testFormatterCase(t *testing.T, c testutil.Case) {
 
 	// Track if any actual events were processed
 	hasActualEvents := false
+	exceptionOccurred := false
 
 	for _, rawEvent := range events {
-		// Check if this is an exception (error event)
+		// Check if this is an exception (error event). An exception propagating
+		// out of the Python generator terminates it immediately — no code after
+		// the yield point runs, including the Finish()-equivalent final chunk.
+		// So we stop replaying events AND skip Finish() below, matching
+		// whatever partial output was already yielded before the exception.
 		if testutil.IsException(rawEvent) {
-			// Exception means the generator never yielded anything
-			// Skip exception handling and don't emit any chunks
-			continue
+			exceptionOccurred = true
+			break
 		}
 
 		hasActualEvents = true
 
 		// Convert raw event to KiroEvent
-		kiroEvent, creditsUsed := eventToKiroEvent(t, rawEvent)
-
-		// Store credits_used if present
-		if creditsUsed > 0 {
-			formatter.creditsUsed = creditsUsed
-		}
+		kiroEvent := eventToKiroEvent(t, rawEvent)
 
 		// Handle event
 		if err := formatter.Handle(kiroEvent, &buf); err != nil {
@@ -99,8 +101,8 @@ func testFormatterCase(t *testing.T, c testutil.Case) {
 		}
 	}
 
-	// Only finish if we actually processed events
-	if hasActualEvents {
+	// Only finish if we actually processed events and didn't stop on an exception.
+	if hasActualEvents && !exceptionOccurred {
 		if err := formatter.Finish(&buf); err != nil {
 			t.Fatalf("Finish() failed: %v", err)
 		}
@@ -135,42 +137,41 @@ func testFormatterCase(t *testing.T, c testutil.Case) {
 	}
 }
 
-// eventToKiroEvent converts a raw corpus event to a KiroEvent and optionally extracts credits_used.
-// Returns (KiroEvent, creditsUsed float64).
-func eventToKiroEvent(t *testing.T, rawEvent json.RawMessage) (streamingcore.KiroEvent, float64) {
-	var rawMap map[string]any
-	if err := json.Unmarshal(rawEvent, &rawMap); err != nil {
+// corpusEvent mirrors the KiroEvent dataclass fields the Python corpus
+// recorder serializes per event (.upstream/kiro/streaming_core.py:60-85).
+// usage and tool_use stay raw: usage because its shape (bare number vs
+// token-count dict) must round-trip verbatim into UsageRaw, tool_use because
+// its nested "arguments" string needs its own JSON-in-JSON unmarshal step.
+type corpusEvent struct {
+	Type                   string          `json:"type"`
+	Content                *string         `json:"content"`
+	ThinkingContent        *string         `json:"thinking_content"`
+	ToolUse                json.RawMessage `json:"tool_use"`
+	Usage                  json.RawMessage `json:"usage"`
+	ContextUsagePercentage *float64        `json:"context_usage_percentage"`
+}
+
+// eventToKiroEvent converts a raw corpus event to a KiroEvent.
+func eventToKiroEvent(t *testing.T, rawEvent json.RawMessage) streamingcore.KiroEvent {
+	t.Helper()
+
+	var ce corpusEvent
+	if err := json.Unmarshal(rawEvent, &ce); err != nil {
 		t.Fatalf("failed to unmarshal event: %v", err)
 	}
 
-	ev := streamingcore.KiroEvent{}
-	var creditsUsed float64 = 0
+	ev := streamingcore.KiroEvent{Kind: ce.Type}
 
-	// Map type field to Kind
-	if typeVal, ok := rawMap["type"]; ok {
-		if s, isStr := typeVal.(string); isStr {
-			ev.Kind = s
-		}
+	if ce.Content != nil {
+		ev.Content = *ce.Content
+	}
+	if ce.ThinkingContent != nil {
+		ev.Thinking = *ce.ThinkingContent
 	}
 
-	// Map content
-	if content, ok := rawMap["content"]; ok && content != nil {
-		if s, isStr := content.(string); isStr {
-			ev.Content = s
-		}
-	}
-
-	// Map thinking_content to Thinking
-	if thinkingContent, ok := rawMap["thinking_content"]; ok && thinkingContent != nil {
-		if s, isStr := thinkingContent.(string); isStr {
-			ev.Thinking = s
-		}
-	}
-
-	// Map tool_use
-	if toolUseRaw, ok := rawMap["tool_use"]; ok && toolUseRaw != nil {
+	if len(ce.ToolUse) > 0 && string(ce.ToolUse) != "null" {
 		var toolUseMap map[string]any
-		if b, err := json.Marshal(toolUseRaw); err == nil && json.Unmarshal(b, &toolUseMap) == nil {
+		if err := json.Unmarshal(ce.ToolUse, &toolUseMap); err == nil {
 			tu := &streamingcore.ToolUseData{
 				ID:   getStringField(toolUseMap, "id"),
 				Name: getStringField(getMapField(toolUseMap, "function"), "name"),
@@ -186,50 +187,19 @@ func eventToKiroEvent(t *testing.T, rawEvent json.RawMessage) (streamingcore.Kir
 		}
 	}
 
-	// Map usage - can be either a float (credits_used) or a dict (token counts)
-	if usageRaw, ok := rawMap["usage"]; ok && usageRaw != nil {
-		// Try to parse as float first (credits_used)
-		if f, isFloat := usageRaw.(float64); isFloat {
-			creditsUsed = f
-		} else {
-			// Try to parse as dict with token counts
-			var usageMap map[string]any
-			if b, err := json.Marshal(usageRaw); err == nil && json.Unmarshal(b, &usageMap) == nil {
-				// The raw event uses camelCase: inputTokenCount, outputTokenCount, etc.
-				input := getIntField(usageMap, "inputTokenCount")
-				if input == 0 {
-					input = getIntField(usageMap, "input_tokens") // fallback to snake_case
-				}
-				output := getIntField(usageMap, "outputTokenCount")
-				if output == 0 {
-					output = getIntField(usageMap, "output_tokens")
-				}
-				cacheRead := getIntField(usageMap, "cacheReadTokenCount")
-				if cacheRead == 0 {
-					cacheRead = getIntField(usageMap, "cache_read_tokens")
-				}
-				cacheCreation := getIntField(usageMap, "cacheCreationTokenCount")
-				if cacheCreation == 0 {
-					cacheCreation = getIntField(usageMap, "cache_creation_tokens")
-				}
-				ev.Usage = &streamingcore.UsageData{
-					Input:         input,
-					Output:        output,
-					CacheRead:     cacheRead,
-					CacheCreation: cacheCreation,
-				}
-			}
-		}
+	// usage carries through as raw bytes (bare number or token-count dict) —
+	// see streamingcore.KiroEvent.UsageRaw for why: the formatter echoes it
+	// verbatim as credits_used, matching upstream's
+	// final_chunk["usage"]["credits_used"] = metering_data.
+	if len(ce.Usage) > 0 && string(ce.Usage) != "null" {
+		ev.UsageRaw = ce.Usage
 	}
 
-	// Map context_usage_percentage to ContextUsage
-	if contextUsage, ok := rawMap["context_usage_percentage"]; ok && contextUsage != nil {
-		if f, isNum := contextUsage.(float64); isNum {
-			ev.ContextUsage = f
-		}
+	if ce.ContextUsagePercentage != nil {
+		ev.ContextUsage = *ce.ContextUsagePercentage
 	}
 
-	return ev, creditsUsed
+	return ev
 }
 
 // parseOutputChunks splits the output into individual SSE chunks.
@@ -422,15 +392,6 @@ func getListField(m map[string]any, key string) []any {
 		}
 	}
 	return []any{}
-}
-
-func getIntField(m map[string]any, key string) int {
-	if val, ok := m[key]; ok {
-		if f, isNum := val.(float64); isNum {
-			return int(f)
-		}
-	}
-	return 0
 }
 
 // testError is a helper to create error messages.
