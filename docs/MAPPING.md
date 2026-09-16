@@ -33,7 +33,7 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `routes_openai.py` | `internal/routesopenai` | |
 | `routes_anthropic.py` | `internal/routesanthropic` | |
 | `http_client.py` | `internal/httpclient` | `transport.go`, `proxy.go`, `client.go`, `stream.go` |
-| `auth.py` | `internal/auth` | |
+| `auth.py` | `internal/auth` | `types.go`, `manager.go`, `json_source.go` (parcial — Task 2: tipos, Manager, fingerprint y la fuente JSON de Kiro Desktop; falta el refresco real (`ForceRefresh`/`refreshLocked` son stub), la fuente SQLite de kiro-cli y el envoltorio `singleflight`, que llegan en las Tasks 3-5) |
 | `account_manager.py` | `internal/accountmanager` | |
 | `mcp_tools.py` | `internal/mcptools` | |
 | `debug_logger.py` | `internal/debuglogger` | |
@@ -91,3 +91,10 @@ paquete.
 |---|---|
 | `utils` ↔ `auth` | `utils` declara la interfaz `TokenProvider` y `auth.Manager` la satisface |
 | `mcp_tools` ↔ `streaming_anthropic` | El formateo de SSE se extrae a `internal/sse` |
+
+## Extensiones deliberadas respecto al original
+
+| Dónde | Qué | Por qué |
+|---|---|---|
+| `internal/auth.AuthType` | 5 valores (`Unknown`, `KiroDesktop`, `AWSSSO`, `KiroCLI`, `RefreshOnly`) en vez de los 2 del `Enum` original (`KIRO_DESKTOP`, `AWS_SSO_OIDC`, `auth.py:68-83`) | Reflejan los tres `type` que ya distingue `credentials.json` (`json`, `sqlite`, `refresh_token`, spec §6.11) en vez de que kiro-cli y refresh-token-only colapsen en `KIRO_DESKTOP` como hoy hace el Python |
+| `internal/auth` (JSON source) | La detección de región por ARN (`auth.py:357-366`, solo en el loader de SQLite en el original) se generaliza como fallback también para el JSON de Kiro Desktop | Pedido explícitamente por el plan de la Task 2 (4 niveles de precedencia de región, incluido "detectado del ARN") y reutilizable sin cambios por la Task 4 (SQLite) |
