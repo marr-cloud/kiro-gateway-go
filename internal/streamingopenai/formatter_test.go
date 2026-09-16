@@ -25,8 +25,30 @@ func TestFormatterCorpus(t *testing.T) {
 	}
 }
 
+// mockedFixtureSkips documents corpus fixtures whose source Python test
+// monkeypatches parse_bracket_tool_calls to a canned non-empty result,
+// unrelated to the actual content (.upstream/tests/unit/test_streaming_anthropic.py:463
+// documents the identical scenario for the Anthropic dialect —
+// internal/streaminganthropic/formatter_test.go's mockedFixtureSkips has the
+// full writeup). Every OTHER call site in the upstream OpenAI/Anthropic
+// streaming test suites mocks parse_bracket_tool_calls to return_value=[],
+// so the real function (internal/parsers.ParseBracketToolCalls, which this
+// port calls) is never exercised through either corpus — for content
+// "[tool_call: func1]", which doesn't match the real bracket pattern
+// `\[Called\s+(\w+)\s+with\s+args:\s*`, it correctly returns no tool calls,
+// disagreeing with this one mocked fixture by design. Previously reported as
+// a live (unskipped) failure in docs/MAPPING.md's streaming_openai.py row
+// and task-7-report.md; converted to an explicit, evidence-cited skip here
+// (task 8) so `go test ./...` is green without silently masking the cause.
+var mockedFixtureSkips = map[string]string{
+	"c272a07c05e0e8a5": `parse_bracket_tool_calls is mocked to a canned non-matching result in the source Python test (same scenario as test_streaming_anthropic.py:463); the real function returns [] for "[tool_call: func1]"`,
+}
+
 // testFormatterCase processes a single corpus case.
 func testFormatterCase(t *testing.T, c testutil.Case) {
+	if reason, skip := mockedFixtureSkips[c.Name]; skip {
+		t.Skip(reason)
+	}
 	// Extract model and other kwargs
 	kwargs := testutil.Kwargs(t, c.Input)
 	var model string

@@ -10,6 +10,7 @@ import (
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/sse"
 	"github.com/marr-cloud/kiro-gateway-go/internal/streamingcore"
+	"github.com/marr-cloud/kiro-gateway-go/internal/tokenizer"
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
 )
 
@@ -119,7 +120,7 @@ func (f *Formatter) Finish(w io.Writer) error {
 	// completion_tokens uses the Claude correction factor by default, matching
 	// `count_tokens(full_content + full_thinking_content)` (streaming_openai.py:305),
 	// which calls count_tokens with apply_claude_correction defaulting to True.
-	completionTokens := countTokens(f.fullContent+f.fullThinkingContent, true)
+	completionTokens := tokenizer.CountTokens(f.fullContent+f.fullThinkingContent, true)
 
 	// stream_completed_normally = received_usage or received_context_usage
 	// (streaming_openai.py:272-274).
@@ -344,7 +345,7 @@ func (f *Formatter) calculateTokens(completionTokens int) (promptTokens, totalTo
 	}
 
 	if len(f.requestMessages) > 0 {
-		promptTokens = countMessageTokens(f.requestMessages) + countToolsTokens(f.requestTools)
+		promptTokens = tokenizer.CountMessageTokens(f.requestMessages) + tokenizer.CountToolsTokens(f.requestTools)
 		return promptTokens, promptTokens + completionTokens
 	}
 
