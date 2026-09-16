@@ -95,32 +95,27 @@ func TestShouldInjectRecovery(t *testing.T) {
 		t.Fatalf("expected 2 corpus cases for should_inject_recovery, got %d", len(cases))
 	}
 
-	// Save and restore the original value
-	origEnabled := truncationRecoveryEnabled
-	t.Cleanup(func() { truncationRecoveryEnabled = origEnabled })
-
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			// This function takes no arguments
+			// This function takes no arguments in the corpus
 			args := testutil.Args(t, c.Input)
 			if len(args) != 0 {
 				t.Fatalf("case %s: expected 0 args, got %d", c.Name, len(args))
 			}
 
-			// Read TRUNCATION_RECOVERY from config
+			// Read TRUNCATION_RECOVERY from config and pass as parameter
 			config := testutil.Config(c.Input)
+			enabled := true // default if not specified in config
 			if config != nil {
 				if truncationRecoveryRaw, ok := config["TRUNCATION_RECOVERY"]; ok {
-					var enabled bool
 					if err := json.Unmarshal(truncationRecoveryRaw, &enabled); err != nil {
 						t.Fatalf("case %s: decoding TRUNCATION_RECOVERY: %v", c.Name, err)
 					}
-					truncationRecoveryEnabled = enabled
 				}
 			}
 
-			// Call the function
-			got := ShouldInjectRecovery()
+			// Call the function with the flag value from config
+			got := ShouldInjectRecovery(enabled)
 
 			// Compare output
 			testutil.AssertJSONEqual(t, got, c.Output, c.Name)

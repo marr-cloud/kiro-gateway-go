@@ -47,15 +47,9 @@ func GenerateTruncationUserMessage() string {
 }
 
 // ShouldInjectRecovery returns true if truncation recovery messages should be injected.
-// This checks the TRUNCATION_RECOVERY configuration flag via converterscore.TruncationRecoveryEnabled.
-func ShouldInjectRecovery() bool {
-	// Import converterscore to access TruncationRecoveryEnabled
-	// This would need to be imported at the module level
-	// For now, we'll use a package-level variable that can be set by tests
-	return truncationRecoveryEnabled
+// The caller must pass the current value of the TRUNCATION_RECOVERY configuration flag,
+// typically converterscore.TruncationRecoveryEnabled, which is wired from *config.Config
+// at server startup (Task 11).
+func ShouldInjectRecovery(enabled bool) bool {
+	return enabled
 }
-
-// truncationRecoveryEnabled is a package-level variable that mirrors converterscore.TruncationRecoveryEnabled.
-// This is set to true by default, matching the upstream behavior and converterscore initialization.
-// Tests can override this as needed.
-var truncationRecoveryEnabled = true
