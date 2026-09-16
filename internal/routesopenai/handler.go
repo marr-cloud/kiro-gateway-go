@@ -43,19 +43,17 @@
 //     Kiro. Este port replica eso: `attemptAccount` (failover.go) llama
 //     `h.client.RequestWithRetry(ctx, httpReq, acc.Auth, true)` con el
 //     último parámetro fijo a `true`, no `req.Stream`.
-//  4. Fallos de transporte (red) siempre Recoverable. Ver el comentario de
-//     handleTransportError en failover.go para el razonamiento completo:
-//     accountmanager.Manager.ReportFailure calcula su propia clasificación
-//     vía accounterrors.Classify(statusCode, reason), que trata CUALQUIER
-//     5xx como Fatal — correcto para una respuesta HTTP real de Kiro, pero
-//     routes_openai.py:512-517 fuerza explícitamente ErrorType.RECOVERABLE
-//     para errores de TRANSPORTE (timeouts, DNS, conexión rechazada...),
-//     que son *httpclient.RequestError en este port, no una respuesta HTTP.
-//     Como accountmanager.ReportFailure no admite forzar la clasificación
-//     (fuera del alcance de esta tarea tocar ese paquete), esta
-//     implementación decide el failover ella misma para ese caso concreto
-//     (siempre continúa con la siguiente cuenta) y solo usa ReportFailure
-//     para el efecto secundario de estadísticas/mensaje.
+//  4. Fallos de transporte (red) siempre Recoverable. routes_openai.py:512-517
+//     fuerza explícitamente ErrorType.RECOVERABLE para errores de TRANSPORTE
+//     (timeouts, DNS, conexión rechazada, reintentos agotados...) —
+//     *httpclient.RequestError en este port, distinto de una respuesta HTTP
+//     no-2xx real de Kiro. handleTransportError (failover.go) replica eso
+//     llamando a accountmanager.Manager.ReportFailureAs con
+//     accounterrors.Recoverable forzado, en vez de dejar que
+//     accounterrors.Classify(statusCode, reason) lo reclasifique como Fatal
+//     (la tabla trata cualquier 5xx como Fatal, correcto para una respuesta
+//     HTTP real, no para un fallo de transporte) — ver el comentario de
+//     ReportFailureAs en internal/accountmanager/failover.go.
 package routesopenai
 
 import (

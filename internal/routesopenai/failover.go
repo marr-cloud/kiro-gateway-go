@@ -127,12 +127,13 @@ func (h *Handler) attemptAccount(ctx context.Context, w http.ResponseWriter, acc
 // rechazada, reintentos agotados...) devuelto por RequestWithRetry como un
 // *httpclient.RequestError. Ver el punto 4 del comentario de cabecera de
 // handler.go: SIEMPRE se trata como Recoverable, igual que
-// routes_openai.py:512-517, sin pasar por accounterrors.Classify (que
-// trataría cualquier SuggestedHTTPCode 5xx como Fatal — correcto para una
-// respuesta HTTP real, no para un fallo de transporte). ReportFailure se
-// sigue llamando por su efecto secundario (LastFailureMsg para diagnóstico y
-// para el mensaje de agotamiento), pero su valor de retorno se ignora aquí a
-// propósito: esta función decide el failover ella misma.
+// routes_openai.py:512-517 (`ErrorType.RECOVERABLE` pasado explícitamente al
+// llamador). accountmanager.Manager.ReportFailureAs toma esa clasificación
+// del LLAMADOR en vez de derivarla de accounterrors.Classify(statusCode,
+// reason) — que trataría cualquier SuggestedHTTPCode 5xx como Fatal,
+// correcto para una respuesta HTTP real de Kiro pero no para un fallo de
+// transporte — así que arma el circuit breaker del mismo modo que una
+// respuesta 402/403/429 real (account_manager.py:809-816).
 func (h *Handler) handleTransportError(acc *accountmanager.Account, model string, reqErr error) (status int, message string, done bool) {
 	info := networkerrors.Info{UserMessage: reqErr.Error(), SuggestedHTTPCode: http.StatusBadGateway}
 
@@ -141,7 +142,7 @@ func (h *Handler) handleTransportError(acc *accountmanager.Account, model string
 		info = rerr.Info
 	}
 
-	h.accounts.ReportFailure(acc.ID, model, info.SuggestedHTTPCode, "", info.UserMessage)
+	h.accounts.ReportFailureAs(acc.ID, model, accounterrors.Recoverable, info.SuggestedHTTPCode, "", info.UserMessage)
 	return info.SuggestedHTTPCode, info.UserMessage, false
 }
 
@@ -152,9 +153,18 @@ func (h *Handler) handleTransportError(acc *accountmanager.Account, model string
 // internamente). Fatal → el error real de Kiro se devuelve al cliente
 // inmediatamente (done=true). Recoverable → se devuelve para que el
 // llamador excluya la cuenta y siga con la siguiente (done=false).
+//
+// Si leer el cuerpo falla, o el cuerpo llega vacío, se usa el literal
+// "Unknown error" — igual que el fallback de routes_openai.py:446-448
+// (`except Exception: error_content = b"Unknown error"`) para el caso de
+// error de lectura, ampliado aquí también al caso de cuerpo vacío para que
+// el userMessage propagado al cliente nunca sea "".
 func (h *Handler) handleKiroError(w http.ResponseWriter, acc *accountmanager.Account, model string, resp *http.Response) (status int, message string, done bool) {
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
+	if readErr != nil || len(body) == 0 {
+		body = []byte("Unknown error")
+	}
 
 	reason, userMessage := parseKiroError(body)
 	classification := h.accounts.ReportFailure(acc.ID, model, resp.StatusCode, reason, userMessage)

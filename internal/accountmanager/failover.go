@@ -115,9 +115,35 @@ func (m *Manager) ReportSuccess(accountID, model string) {
 // Upstream: account_manager.py:864-865 — failover happens via the exclude set and
 // GetNextAccount's round-robin walk, not via sticky rotation.
 // Returns the classification (Fatal or Recoverable).
+//
+// ReportFailure self-classifies via accounterrors.Classify(statusCode, reason).
+// Callers that already know the classification they want to record — e.g. a
+// caller distinguishing a real Kiro HTTP response from a transport-level
+// failure with the same nominal status code, which must be classified
+// differently — should call ReportFailureAs instead. This delegates to it
+// with the self-computed classification, so the two never drift apart.
 func (m *Manager) ReportFailure(accountID, model string, statusCode int, reason string, msg string) accounterrors.Type {
-	classification := accounterrors.Classify(statusCode, reason)
+	return m.ReportFailureAs(accountID, model, accounterrors.Classify(statusCode, reason), statusCode, reason, msg)
+}
 
+// ReportFailureAs records a failure using the SUPPLIED classification kind,
+// skipping accounterrors.Classify entirely. Upstream's report_failure takes
+// error_type as a caller-supplied parameter (account_manager.py:809-816),
+// not something it derives itself — callers like routes_openai.py:513-516
+// pass ErrorType.RECOVERABLE for a 502/504 transport failure even though
+// classify_error(502-or-504, None) would independently call it Fatal (any
+// 5xx defaults to Fatal in the classification table, account_errors.py) —
+// that table answers "was this a bad response FROM Kiro", not "should this
+// specific transport failure open the circuit breaker for this account".
+// ReportFailure (above) is the self-classifying convenience wrapper most
+// callers want; this is the primitive it delegates to, exposed for callers
+// that need to override the classification.
+//
+// Same side effects as ReportFailure, keyed off kind instead of a freshly
+// computed classification: Recoverable increments ConsecutiveFailures and
+// sets LastFailure (opens quarantine); Fatal only updates LastFailureMsg.
+// The sticky index is never touched here either.
+func (m *Manager) ReportFailureAs(accountID, model string, kind accounterrors.Type, statusCode int, reason string, msg string) accounterrors.Type {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -126,7 +152,7 @@ func (m *Manager) ReportFailure(accountID, model string, statusCode int, reason 
 	if idx == -1 {
 		// Silently ignore unknown accountID; a future logging framework should warn.
 		// Deferred to observability wire (matches upstream's blanket try/except).
-		return classification
+		return kind
 	}
 
 	acc := m.accounts[idx]
@@ -134,7 +160,7 @@ func (m *Manager) ReportFailure(accountID, model string, statusCode int, reason 
 	// Update the failure message in all cases
 	acc.Stats.LastFailureMsg = msg
 
-	if classification == accounterrors.Recoverable {
+	if kind == accounterrors.Recoverable {
 		// Increment failure counter and set timestamp (opens quarantine)
 		acc.Stats.ConsecutiveFailures++
 		acc.Stats.LastFailure = m.clock()
@@ -145,5 +171,5 @@ func (m *Manager) ReportFailure(accountID, model string, statusCode int, reason 
 	// Failover happens through the exclude_accounts loop and nextEnabledIdx walk,
 	// not through sticky rotation.
 
-	return classification
+	return kind
 }
