@@ -111,6 +111,8 @@ type Credentials struct {
 	// Credentials{ClientIDHash: ...} directamente (como hacen los tests de
 	// esta Task, igual que hará la fuente SQLite de la Task 4).
 	ClientIDHash string
+	// Scopes are OAuth scopes for AWS SSO OIDC, loaded from SQLite
+	Scopes []any
 }
 
 // Source carga y persiste Credentials contra un almacén concreto. Hoy solo

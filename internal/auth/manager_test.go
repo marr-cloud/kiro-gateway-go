@@ -541,7 +541,10 @@ func TestJSONFileSource_LoadTreats0ByteFileAsAbsent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: expected a 0-byte file to be non-fatal, got: %v", err)
 	}
-	if got != (Credentials{}) {
+	if got.AccessToken != "" || got.RefreshToken != "" || got.ProfileARN != "" ||
+		got.Region != "" || got.SSORegion != "" || got.ClientID != "" ||
+		got.ClientSecret != "" || got.ClientIDHash != "" || len(got.Scopes) > 0 ||
+		!got.ExpiresAt.IsZero() {
 		t.Errorf("Load() = %#v, want a zero-value Credentials{}", got)
 	}
 }

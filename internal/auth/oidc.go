@@ -105,7 +105,7 @@ func (m *Manager) refreshAWSSSO(ctx context.Context) error {
 		return nil
 	}
 	if statusCode == http.StatusBadRequest && m.authType == AuthTypeKiroCLI {
-		_ = m.loadFromSQLite("")
+		_ = m.loadFromSQLite(m.sqliteDBPath)
 		_, err = m.doAWSSSORefreshAttempt(ctx)
 		return err
 	}

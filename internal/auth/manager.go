@@ -101,6 +101,14 @@ type Manager struct {
 	// Por defecto la plantilla real; inyectable en tests sin modificar vars de paquete.
 	// Fix round 1 (Critical 1): trasladado desde el var de paquete oidcTokenURL de oidc.go.
 	oidcURL func(ssoRegion string) string
+
+	// sqliteDBPath holds the path to the SQLite database for kiro-cli credentials
+	// (Task 4). Set by NewManagerForAccount when loading from SQLite.
+	sqliteDBPath string
+
+	// sqliteKeyRead holds the exact key that was read from SQLite, used to
+	// write back to the same location (Task 4, read-merge-write pattern).
+	sqliteKeyRead string
 }
 
 // Aserciones en tiempo de compilación (fix round 1, Minor #2):
@@ -153,7 +161,24 @@ func NewManagerForAccount(cfg *config.Config, apiRegionOverride string) (*Manage
 	}
 
 	var source Source
-	if cfg.KiroCredsFile != "" {
+	var sqliteKeyRead string
+
+	// Task 4: Detect SQLite source (via KiroCLIDBFile extension or env var)
+	sqliteDBPath := cfg.KiroCLIDBFile
+	if sqliteDBPath != "" {
+		// Load from SQLite for kiro-cli credentials
+		tempM := &Manager{
+			cfg:          cfg,
+			creds:        creds,
+			sqliteDBPath: sqliteDBPath,
+		}
+		if err := tempM.loadFromSQLite(sqliteDBPath); err != nil {
+			return nil, fmt.Errorf("auth: loading SQLite credentials from %s: %w", sqliteDBPath, err)
+		}
+		creds = tempM.creds
+		sqliteKeyRead = tempM.sqliteKeyRead
+		source = nil // SQLite source is not wrapped in a Source interface in Task 4
+	} else if cfg.KiroCredsFile != "" {
 		source = newJSONFileSource(cfg.KiroCredsFile)
 		loaded, err := source.Load()
 		if err != nil {
@@ -178,9 +203,11 @@ func NewManagerForAccount(cfg *config.Config, apiRegionOverride string) (*Manage
 			AccessToken: creds.AccessToken,
 			ExpiresAt:   creds.ExpiresAt,
 		},
-		authType:  detectAuthType(creds, false),
-		region:    baseRegion,
-		apiRegion: apiRegion,
+		authType:      detectAuthType(creds, sqliteDBPath != ""),
+		region:        baseRegion,
+		apiRegion:     apiRegion,
+		sqliteDBPath:  sqliteDBPath,
+		sqliteKeyRead: sqliteKeyRead,
 	}
 
 	// Fix round 1 (Critical 1): initializar los campos inyectables con sus defaults
@@ -425,19 +452,9 @@ func (m *Manager) refreshLocked(ctx context.Context) (string, error) {
 	}
 }
 
-// loadFromSQLite es el seam que la Task 4 reemplaza con el cuerpo real (la
-// fuente SQLite de kiro-cli, auth.py:294-366). refreshAWSSSO (oidc.go) lo
-// llama tras un 400 cuando m.authType == AuthTypeKiroCLI, replicando
-// _load_credentials_from_sqlite + retry único (auth.py:770-773). Por ahora
-// es un no-op que siempre devuelve nil — preflight ruling documentado en
-// progress.md: "Task 3 depende de loadFromSQLite de la Task 4; stub no-op
-// hasta que aterrice".
-// dbPath is deliberately unused pending Task 4's SQLite source.
-// Task 4 will add a field to Manager holding the real path and update the
-// call site in oidc.go to pass it.
-func (m *Manager) loadFromSQLite(dbPath string) error {
-	return nil
-}
+// loadFromSQLite is implemented in sqlite.go (Task 4). It is called by
+// refreshAWSSSO when handling a 400 error for AuthTypeKiroCLI credentials,
+// replicating _load_credentials_from_sqlite + retry behavior (auth.py:770-773).
 
 // ProfileARN devuelve el ARN de perfil de CodeWhisperer actual. Con mutex
 // porque, a partir de la Task 5, un refresco puede actualizarlo
