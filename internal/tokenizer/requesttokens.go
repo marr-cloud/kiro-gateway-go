@@ -30,10 +30,19 @@ func CountTokens(text string, applyCorrection bool) int {
 		return 0
 	}
 	base := len(EncodeOrdinary(text))
-	if applyCorrection {
-		return int(float64(base) * claudeCorrectionFactor)
+	return applyClaudeCorrection(base, applyCorrection)
+}
+
+// applyClaudeCorrection scales total by claudeCorrectionFactor and truncates
+// toward zero when apply is true, matching Python's
+// int(total_tokens * CLAUDE_CORRECTION_FACTOR) at the tail of each count_*
+// function (.upstream/kiro/tokenizer.py). Truncation (int(), not round) is
+// load-bearing for byte-parity with the expected token counts.
+func applyClaudeCorrection(total int, apply bool) int {
+	if apply {
+		return int(float64(total) * claudeCorrectionFactor)
 	}
-	return base
+	return total
 }
 
 // rawMessageFields is the subset of an OpenAI-shaped chat message this
@@ -55,14 +64,18 @@ type rawToolCallFields struct {
 }
 
 // CountMessageTokens mirrors kiro.tokenizer.count_message_tokens(messages,
-// apply_claude_correction=False) (.upstream/kiro/tokenizer.py:110-210), the
-// fallback used when Kiro didn't return context_usage_percentage
+// apply_claude_correction) (.upstream/kiro/tokenizer.py:110-210). It backs both
+// the fallback used when Kiro didn't return context_usage_percentage
 // (.upstream/kiro/streaming_openai.py:317-318,
-// .upstream/kiro/streaming_anthropic.py:177-183 via estimate_request_tokens).
-// messages carries each message's original JSON bytes so nested dumps
-// (tool_use input, tool schemas) preserve source key order like Python's
+// .upstream/kiro/streaming_anthropic.py:177-183 via estimate_request_tokens,
+// both apply_claude_correction=False) and the /v1/messages/count_tokens
+// endpoint (.upstream/kiro/routes_anthropic.py:948-952,
+// apply_claude_correction=True). Every internal per-string count stays
+// uncorrected; applyCorrection scales only the final total, exactly like
+// upstream. messages carries each message's original JSON bytes so nested
+// dumps (tool_use input, tool schemas) preserve source key order like Python's
 // json.dumps on a parsed dict does.
-func CountMessageTokens(messages []json.RawMessage) int {
+func CountMessageTokens(messages []json.RawMessage, applyCorrection bool) int {
 	if len(messages) == 0 {
 		return 0
 	}
@@ -93,7 +106,7 @@ func CountMessageTokens(messages []json.RawMessage) int {
 	}
 
 	total += 3 // final service tokens
-	return total
+	return applyClaudeCorrection(total, applyCorrection)
 }
 
 // countContentTokens counts a message's "content" field, which may be
@@ -250,11 +263,14 @@ type toolFields struct {
 }
 
 // CountToolsTokens mirrors kiro.tokenizer.count_tools_tokens(tools,
-// apply_claude_correction=False) (.upstream/kiro/tokenizer.py:213-253), the
-// tool half of the request_messages/request_tools fallback
+// apply_claude_correction) (.upstream/kiro/tokenizer.py:213-253), the tool half
+// of the request_messages/request_tools fallback
 // (.upstream/kiro/streaming_openai.py:319-320,
-// .upstream/kiro/streaming_anthropic.py:177-183 via estimate_request_tokens).
-func CountToolsTokens(tools []json.RawMessage) int {
+// .upstream/kiro/streaming_anthropic.py:177-183 via estimate_request_tokens,
+// both apply_claude_correction=False) and of the /v1/messages/count_tokens
+// endpoint (apply_claude_correction=True). As upstream, only the final total is
+// scaled when applyCorrection is set.
+func CountToolsTokens(tools []json.RawMessage, applyCorrection bool) int {
 	if len(tools) == 0 {
 		return 0
 	}
@@ -301,20 +317,22 @@ func CountToolsTokens(tools []json.RawMessage) int {
 		}
 	}
 
-	return total
+	return applyClaudeCorrection(total, applyCorrection)
 }
 
 // CountSystemTokens mirrors kiro.tokenizer.count_system_tokens(system_prompt,
-// apply_claude_correction=False) (.upstream/kiro/tokenizer.py:256-293), the
-// system-prompt half of streaming_anthropic.py's estimate_request_tokens
-// call (.upstream/kiro/streaming_anthropic.py:177-183). system_prompt in
-// Python can be a plain string, a list of Anthropic content blocks (each
-// optionally carrying "cache_control"), or any other JSON scalar — the
-// str(block) fallback below reproduces the last branch.
+// apply_claude_correction) (.upstream/kiro/tokenizer.py:256-293), the
+// system-prompt half of streaming_anthropic.py's estimate_request_tokens call
+// (.upstream/kiro/streaming_anthropic.py:177-183, apply_claude_correction=False)
+// and of the /v1/messages/count_tokens endpoint (apply_claude_correction=True).
+// system_prompt in Python can be a plain string, a list of Anthropic content
+// blocks (each optionally carrying "cache_control"), or any other JSON scalar —
+// the str(block) fallback below reproduces the last branch. As upstream, only
+// the final total is scaled when applyCorrection is set.
 //
 // raw is the request's "system" field as originally-ordered JSON bytes, or
 // nil/empty when absent.
-func CountSystemTokens(raw json.RawMessage) int {
+func CountSystemTokens(raw json.RawMessage, applyCorrection bool) int {
 	trimmed := bytes.TrimSpace(raw)
 	if isJSONNullOrEmpty(trimmed) {
 		return 0
@@ -357,7 +375,7 @@ func CountSystemTokens(raw json.RawMessage) int {
 		total += CountTokens(pyjson.Str(trimmed), false)
 	}
 
-	return total
+	return applyClaudeCorrection(total, applyCorrection)
 }
 
 // isJSONNullOrEmpty reports whether trimmed JSON bytes represent an absent

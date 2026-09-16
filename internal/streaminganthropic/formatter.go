@@ -102,9 +102,13 @@ func (f *Formatter) SetRequestContext(messages, tools []json.RawMessage, system 
 func (f *Formatter) EmitMessageStart(w io.Writer) error {
 	inputTokens := 0
 	if len(f.requestMessages) > 0 || len(f.requestTools) > 0 || jsonTruthy(f.requestSystem) {
-		inputTokens = tokenizer.CountMessageTokens(f.requestMessages) +
-			tokenizer.CountToolsTokens(f.requestTools) +
-			tokenizer.CountSystemTokens(f.requestSystem)
+		// message_start uses apply_claude_correction=False
+		// (.upstream/kiro/streaming_anthropic.py:180): this is a provisional
+		// pre-stream estimate, not the corrected count the count_tokens
+		// endpoint returns.
+		inputTokens = tokenizer.CountMessageTokens(f.requestMessages, false) +
+			tokenizer.CountToolsTokens(f.requestTools, false) +
+			tokenizer.CountSystemTokens(f.requestSystem, false)
 	}
 
 	return writeEvent(w, "message_start", messageStartData{

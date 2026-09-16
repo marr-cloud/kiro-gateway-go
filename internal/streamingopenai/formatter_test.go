@@ -41,7 +41,7 @@ func TestFormatterCorpus(t *testing.T) {
 // and task-7-report.md; converted to an explicit, evidence-cited skip here
 // (task 8) so `go test ./...` is green without silently masking the cause.
 var mockedFixtureSkips = map[string]string{
-	"c272a07c05e0e8a5": `parse_bracket_tool_calls is mocked to a canned non-matching result in the source Python test (same scenario as test_streaming_anthropic.py:463); the real function returns [] for "[tool_call: func1]"`,
+	"c272a07c05e0e8a5": `parse_bracket_tool_calls is mocked to a canned non-matching result in the source Python test (test_streaming_openai.py:1247-1277 test_detects_bracket_tool_calls, patch at :1265); the real function returns [] for "[tool_call: func1]" (same class of mock as streaminganthropic's 51e4de55 skip)`,
 }
 
 // testFormatterCase processes a single corpus case.

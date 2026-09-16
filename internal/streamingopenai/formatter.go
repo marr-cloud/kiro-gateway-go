@@ -345,7 +345,10 @@ func (f *Formatter) calculateTokens(completionTokens int) (promptTokens, totalTo
 	}
 
 	if len(f.requestMessages) > 0 {
-		promptTokens = tokenizer.CountMessageTokens(f.requestMessages) + tokenizer.CountToolsTokens(f.requestTools)
+		// apply_claude_correction=False for prompt_tokens: upstream calibrated
+		// the 1.15 factor for completion_tokens only
+		// (.upstream/kiro/streaming_openai.py:315-320).
+		promptTokens = tokenizer.CountMessageTokens(f.requestMessages, false) + tokenizer.CountToolsTokens(f.requestTools, false)
 		return promptTokens, promptTokens + completionTokens
 	}
 
