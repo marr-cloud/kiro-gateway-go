@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -90,6 +91,16 @@ type Manager struct {
 	// propiedad propia, solo los hosts ya construidos con ella
 	// (auth.py:959-967).
 	apiRegion string
+
+	// homeDir resuelve el directorio home del usuario, para ~/.aws/sso/cache/...
+	// Por defecto os.UserHomeDir; inyectable en tests sin modificar vars de paquete.
+	// Fix round 1 (Critical 1): trasladado desde el var de paquete homeDirFunc de oidc.go.
+	homeDir func() (string, error)
+
+	// oidcURL construye la URL del endpoint OIDC a partir de la sso region.
+	// Por defecto la plantilla real; inyectable en tests sin modificar vars de paquete.
+	// Fix round 1 (Critical 1): trasladado desde el var de paquete oidcTokenURL de oidc.go.
+	oidcURL func(ssoRegion string) string
 }
 
 // Aserciones en tiempo de compilación (fix round 1, Minor #2):
@@ -171,6 +182,33 @@ func NewManagerForAccount(cfg *config.Config, apiRegionOverride string) (*Manage
 		region:    baseRegion,
 		apiRegion: apiRegion,
 	}
+
+	// Fix round 1 (Critical 1): initializar los campos inyectables con sus defaults
+	// para que no sean nil. En tests, los campos pueden ser reasignados sobre la
+	// instancia de Manager construida directamente, sin necesidad de vars de paquete.
+	if m.homeDir == nil {
+		m.homeDir = os.UserHomeDir
+	}
+	if m.oidcURL == nil {
+		m.oidcURL = func(ssoRegion string) string {
+			return "https://oidc." + ssoRegion + ".amazonaws.com/token"
+		}
+	}
+
+	// Fix round 1 (Important 2): resolver Enterprise clientIdHash ANTES de
+	// detectAuthType, igual que el original (auth.py:430-433). Si la credencial
+	// trae SOLO clientIdHash (sin clientId/clientSecret directo), resolver desde
+	// ~/.aws/sso/cache/{clientIdHash}.json aquí, y entonces detectAuthType verá
+	// los clientId/clientSecret resueltos para decidir que es AuthTypeAWSSSO.
+	if m.creds.ClientID == "" && m.creds.ClientSecret == "" && m.creds.ClientIDHash != "" {
+		// Necesitamos un Manager "temporal" para poder llamar a
+		// loadEnterpriseDeviceRegistration, que usa m.homeDir. Pero como m ya
+		// existe, simplemente llámalo con el hash, y él actualizará m.creds.
+		_ = m.loadEnterpriseDeviceRegistration(m.creds.ClientIDHash)
+		// Redetectar el tipo de auth ahora que tenemos clientId/clientSecret resueltos.
+		m.authType = detectAuthType(m.creds, false)
+	}
+
 	return m, nil
 }
 
@@ -215,6 +253,10 @@ func mergeCredentials(dst *Credentials, loaded Credentials) {
 	}
 	if loaded.ClientSecret != "" {
 		dst.ClientSecret = loaded.ClientSecret
+	}
+	// Fix round 1 (Important 2): copiar ClientIDHash junto con ClientID/ClientSecret.
+	if loaded.ClientIDHash != "" {
+		dst.ClientIDHash = loaded.ClientIDHash
 	}
 }
 
@@ -363,9 +405,17 @@ func (m *Manager) ForceRefresh(ctx context.Context) (string, error) {
 // AWS SSO OIDC (refreshAWSSSO, oidc.go); Task 5 sustituye el resto (Kiro
 // Desktop, RefreshOnly) por el refresco real envuelto en singleflight,
 // dejando la firma intacta para que AccessToken y ForceRefresh no cambien.
+//
+// Fix round 1 (Important 3): ampliar para también rutear AuthTypeKiroCLI a
+// refreshAWSSSO. La diferencia entre AuthTypeAWSSSO y AuthTypeKiroCLI es la
+// FUENTE (JSON vs SQLite), no el método de refresco. Ambos pueden tener
+// credenciales OIDC (clientId/clientSecret) y usar el mismo refreshAWSSSO.
+// La única diferencia observable es el comportamiento ante un 400: el
+// 400-retry-with-SQLite-reload es controlado por refreshAWSSSO mismo
+// revisando si m.authType == AuthTypeKiroCLI.
 func (m *Manager) refreshLocked(ctx context.Context) (string, error) {
 	switch m.authType {
-	case AuthTypeAWSSSO:
+	case AuthTypeAWSSSO, AuthTypeKiroCLI:
 		if err := m.refreshAWSSSO(ctx); err != nil {
 			return "", err
 		}
@@ -381,11 +431,10 @@ func (m *Manager) refreshLocked(ctx context.Context) (string, error) {
 // _load_credentials_from_sqlite + retry único (auth.py:770-773). Por ahora
 // es un no-op que siempre devuelve nil — preflight ruling documentado en
 // progress.md: "Task 3 depende de loadFromSQLite de la Task 4; stub no-op
-// hasta que aterrice". dbPath queda sin usar a propósito: la Task 4 decide
-// de dónde sale la ruta real (probablemente un nuevo campo en Manager
-// poblado por el constructor de la fuente SQLite); el único call site hoy
-// (oidc.go) pasa una cadena vacía porque no hay otra fuente disponible
-// todavía.
+// hasta que aterrice".
+// dbPath is deliberately unused pending Task 4's SQLite source.
+// Task 4 will add a field to Manager holding the real path and update the
+// call site in oidc.go to pass it.
 func (m *Manager) loadFromSQLite(dbPath string) error {
 	return nil
 }

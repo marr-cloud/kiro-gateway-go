@@ -59,30 +59,6 @@ import (
 // constante de módulo, así que aquí también es un literal local.
 const oidcClientTimeout = 30 * time.Second
 
-// homeDirFunc resuelve el directorio home del usuario. Es un var de paquete
-// (en vez de llamar a os.UserHomeDir() directamente dentro de
-// loadEnterpriseDeviceRegistration) únicamente para que oidc_test.go pueda
-// redirigirlo a un t.TempDir() sin tocar el sistema de ficheros real fuera
-// de tmp -- la instrucción del brief de "hacer overridable la ruta base
-// para tests". En producción nunca se reasigna: siempre vale
-// os.UserHomeDir. No es os.Getenv (el ruling de la Task 2, punto 6, prohíbe
-// llamadas directas a variables de entorno para configuración/región; esto
-// es información de usuario del SO, una preocupación distinta) -- ver el
-// ruling de esta Task 3 sobre el mismo punto.
-var homeDirFunc = os.UserHomeDir
-
-// oidcTokenURL construye la URL del endpoint OIDC a partir de la sso
-// region -- https://oidc.{region}.amazonaws.com/token (auth.py:757,
-// config.py:176: AWS_SSO_OIDC_URL_TEMPLATE). Es un var de paquete, no una
-// llamada directa a fmt.Sprintf dentro de doAWSSSORefreshAttempt, por la
-// misma razón que homeDirFunc es un var: oidc_test.go necesita poder
-// apuntar las peticiones a un httptest.Server (que vive en 127.0.0.1:puerto,
-// no bajo el hostname real oidc.*.amazonaws.com) sin tocar red real. En
-// producción nunca se reasigna.
-var oidcTokenURL = func(ssoRegion string) string {
-	return fmt.Sprintf("https://oidc.%s.amazonaws.com/token", ssoRegion)
-}
-
 // oidcRefreshRequest es el cuerpo JSON camelCase que exige la AWS SSO OIDC
 // CreateToken API (auth.py:810-815): grantType, no grant_type.
 type oidcRefreshRequest struct {
@@ -167,7 +143,7 @@ func (m *Manager) doAWSSSORefreshAttempt(ctx context.Context) (int, error) {
 	if ssoRegion == "" {
 		ssoRegion = m.region
 	}
-	url := oidcTokenURL(ssoRegion)
+	url := m.oidcURL(ssoRegion)
 
 	reqBody := oidcRefreshRequest{
 		GrantType:    "refresh_token",
@@ -205,6 +181,7 @@ func (m *Manager) doAWSSSORefreshAttempt(ctx context.Context) (int, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// TODO(security): redact secrets in response body before logging (matches upstream's equally-loose behavior).
 		return resp.StatusCode, fmt.Errorf("auth: aws sso oidc refresh failed: status %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -245,6 +222,7 @@ func (m *Manager) doAWSSSORefreshAttempt(ctx context.Context) (int, error) {
 	// NUNCA hace fallar el refresco ya conseguido. Se replica ignorando el
 	// error de Save aquí (este paquete no tiene todavía una dependencia de
 	// logging establecida -- ver el ruling de la Task 3).
+	// TODO(logging): log this error once observability lands (matches upstream's try/except).
 	if m.source != nil {
 		_ = m.source.Save(m.creds)
 	}
@@ -266,7 +244,7 @@ func (m *Manager) doAWSSSORefreshAttempt(ctx context.Context) (int, error) {
 // replica devolviendo siempre nil -- la firma conserva `error` porque así
 // la pide el brief de esta Task, pero hoy nunca es no-nil, a propósito.
 func (m *Manager) loadEnterpriseDeviceRegistration(clientIDHash string) error {
-	home, err := homeDirFunc()
+	home, err := m.homeDir()
 	if err != nil {
 		return nil
 	}

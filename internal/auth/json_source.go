@@ -87,6 +87,13 @@ func (s *jsonFileSource) Load() (Credentials, error) {
 	if v, ok := raw["clientSecret"].(string); ok {
 		creds.ClientSecret = v
 	}
+	// Fix round 1 (Important 2): parsear clientIdHash para Enterprise Kiro IDE.
+	// La mayoría de las credenciales traen clientId/clientSecret directos; las
+	// Enterprise traen solo clientIdHash y necesitan resolver el hash contra
+	// ~/.aws/sso/cache/{clientIdHash}.json en el refresco (oidc.go).
+	if v, ok := raw["clientIdHash"].(string); ok {
+		creds.ClientIDHash = v
+	}
 	if v, ok := raw["expiresAt"].(string); ok && v != "" {
 		if t, perr := parseExpiresAt(v); perr == nil {
 			creds.ExpiresAt = t

@@ -27,14 +27,11 @@ func (f *fakeSource) Save(c Credentials) error {
 	return nil
 }
 
-// withHomeDirOverride redirige homeDirFunc a dir durante el test, y lo
-// restaura al valor real (os.UserHomeDir) al terminar -- el mecanismo de
-// "ruta base overridable para tests" que pide el brief de la Task 3.
-func withHomeDirOverride(t *testing.T, dir string) {
-	t.Helper()
-	prev := homeDirFunc
-	homeDirFunc = func() (string, error) { return dir, nil }
-	t.Cleanup(func() { homeDirFunc = prev })
+// injectHomeDirForTest inyecta un homeDir personalizado en mgr para el test.
+// Fix round 1 (Critical 1): trasladado de withHomeDirOverride (que modificaba
+// el var de paquete homeDirFunc) a un parámetro del struct Manager.
+func injectHomeDirForTest(mgr *Manager, dir string) {
+	mgr.homeDir = func() (string, error) { return dir, nil }
 }
 
 // --- Success --------------------------------------------------------------
@@ -120,7 +117,6 @@ func TestRefreshAWSSSO_Enterprise(t *testing.T) {
 	if err := os.WriteFile(regFile, []byte(`{"clientId":"ent-client-id","clientSecret":"ent-client-secret"}`), 0o600); err != nil {
 		t.Fatalf("writing device registration fixture: %v", err)
 	}
-	withHomeDirOverride(t, dir)
 
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +127,6 @@ func TestRefreshAWSSSO_Enterprise(t *testing.T) {
 		_, _ = w.Write([]byte(`{"accessToken":"at-ent","expiresIn":3600}`))
 	}))
 	defer srv.Close()
-	withOIDCServerOverride(t, srv)
 
 	mgr := &Manager{
 		authType: AuthTypeAWSSSO,
@@ -142,6 +137,9 @@ func TestRefreshAWSSSO_Enterprise(t *testing.T) {
 		},
 		refreshToken: "rt-ent",
 	}
+	// Fix round 1 (Critical 1): inyectar homeDir y oidcURL directamente en el Manager
+	injectHomeDirForTest(mgr, dir)
+	mgr.oidcURL = func(string) string { return srv.URL }
 
 	if err := mgr.refreshAWSSSO(context.Background()); err != nil {
 		t.Fatalf("refreshAWSSSO: %v", err)
@@ -163,9 +161,9 @@ func TestRefreshAWSSSO_Enterprise(t *testing.T) {
 
 func TestLoadEnterpriseDeviceRegistration_FileMissing(t *testing.T) {
 	dir := t.TempDir()
-	withHomeDirOverride(t, dir)
 
 	mgr := &Manager{creds: Credentials{ClientIDHash: "missing-hash"}}
+	injectHomeDirForTest(mgr, dir)
 	if err := mgr.loadEnterpriseDeviceRegistration("missing-hash"); err != nil {
 		t.Fatalf("loadEnterpriseDeviceRegistration: want nil error for missing file, got %v", err)
 	}
@@ -183,9 +181,9 @@ func TestLoadEnterpriseDeviceRegistration_MalformedJSON(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cacheDir, "bad-hash.json"), []byte("{not json"), 0o600); err != nil {
 		t.Fatalf("writing malformed fixture: %v", err)
 	}
-	withHomeDirOverride(t, dir)
 
 	mgr := &Manager{creds: Credentials{ClientIDHash: "bad-hash"}}
+	injectHomeDirForTest(mgr, dir)
 	if err := mgr.loadEnterpriseDeviceRegistration("bad-hash"); err != nil {
 		t.Fatalf("loadEnterpriseDeviceRegistration: want nil error for malformed JSON, got %v", err)
 	}
@@ -279,25 +277,12 @@ func TestRefreshAWSSSO_500_NoRetry(t *testing.T) {
 
 // --- helpers ---------------------------------------------------------------
 
-// withOIDCServerOverride redirige oidcTokenURL (oidc.go) para que
-// doAWSSSORefreshAttempt hable con srv en vez de con el hostname real
-// oidc.{region}.amazonaws.com -- httptest.Server no puede registrarse bajo
-// ese hostname, así que interceptar aquí es la única forma de probar el
-// camino HTTP sin tocar red real. Se restaura al valor real al terminar el
-// test.
-func withOIDCServerOverride(t *testing.T, srv *httptest.Server) {
-	t.Helper()
-	prev := oidcTokenURL
-	oidcTokenURL = func(string) string { return srv.URL }
-	t.Cleanup(func() { oidcTokenURL = prev })
-}
-
 // managerForOIDCTest construye un Manager listo para ejercitar
 // refreshAWSSSO contra srv, con credenciales AWS SSO OIDC "normales" (no
-// Enterprise) ya pobladas.
+// Enterprise) ya pobladas. Fix round 1 (Critical 1): inyecta oidcURL
+// directamente en el Manager en lugar de modificar un var de paquete.
 func managerForOIDCTest(t *testing.T, srv *httptest.Server, authType AuthType) (*Manager, *fakeSource) {
 	t.Helper()
-	withOIDCServerOverride(t, srv)
 	src := &fakeSource{}
 	mgr := &Manager{
 		authType: authType,
@@ -309,6 +294,8 @@ func managerForOIDCTest(t *testing.T, srv *httptest.Server, authType AuthType) (
 			SSORegion:    "us-east-1",
 		},
 		refreshToken: "rt-old",
+		// Fix round 1 (Critical 1): inyectar oidcURL para que apunte al httptest.Server
+		oidcURL: func(string) string { return srv.URL },
 	}
 	return mgr, src
 }
