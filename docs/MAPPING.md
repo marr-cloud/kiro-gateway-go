@@ -73,7 +73,7 @@ paquete.
 
 | Paquete Go | Responsabilidad | Por qué existe |
 |---|---|---|
-| `internal/sse` | Formateo de eventos SSE | Rompe el ciclo `mcp_tools` ↔ `streaming_anthropic` |
+| `internal/sse` | Formateo de eventos SSE (Task 5) | Rompe el ciclo `mcp_tools` ↔ `streaming_anthropic` (FormatEvent con dialecto OpenAI/Anthropic, FormatDone OpenAI-only) |
 | `internal/pyjson` | Emula `json.dumps` y `str()` de Python | Aísla las rarezas de Python en un solo sitio |
 | `internal/testutil` | Cargador del corpus y generadores de chunks | Equivalente de los helpers de `conftest.py` |
 | `internal/server` | Router, middleware y ciclo de vida | Equivalente del `lifespan` de FastAPI |
