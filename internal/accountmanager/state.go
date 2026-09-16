@@ -25,6 +25,7 @@ type stateFileFormat struct {
 
 // LoadState lee state.json y fusiona el estado guardado con las cuentas cargadas.
 // Si el archivo no existe, es un no-error (empieza con estado vacío).
+// Después de fusionar, snapshota lastSaved para marcar el estado como "ya guardado".
 func (m *Manager) LoadState() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -37,7 +38,11 @@ func (m *Manager) LoadState() error {
 	data, err := os.ReadFile(stateFilePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// Archivo no existe — no es error
+			// Archivo no existe — inicializar lastSaved como snapshot actual
+			m.lastSaved = make(map[string]AccountStats, len(m.accounts))
+			for _, acc := range m.accounts {
+				m.lastSaved[acc.ID] = acc.Stats
+			}
 			return nil
 		}
 		// Otro error de lectura — registrar pero no fallar
@@ -77,24 +82,33 @@ func (m *Manager) LoadState() error {
 		}
 	}
 
+	// Después de fusionar, snapshota lastSaved para marcar el estado como "ya guardado"
+	m.lastSaved = make(map[string]AccountStats, len(m.accounts))
+	for _, acc := range m.accounts {
+		m.lastSaved[acc.ID] = acc.Stats
+	}
+
 	return nil
 }
 
 // SaveState guarda el estado actual a state.json de forma atómica.
 // Usa tmp + rename con reintentos (3x, 100ms apart).
+// Actualiza lastSaved solo tras éxito persistente para que hasStateChanged()
+// pueda detectar correctamente si hay cambios.
 func (m *Manager) SaveState() error {
+	// Fase 1: Snapshot bajo RLock (sin disk I/O)
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	stateFilePath := m.stateFile
 	if stateFilePath == "" {
+		m.mu.RUnlock()
 		return nil
 	}
 
-	// Construir state data
+	// Construir state data Y snapshot de lastSaved en un mismo pase
 	stateData := stateFileFormat{
 		Accounts: make(map[string]accountStatsJSON),
 	}
+	snapshot := make(map[string]AccountStats, len(m.accounts))
 
 	for _, acc := range m.accounts {
 		lastFailureStr := ""
@@ -107,17 +121,19 @@ func (m *Manager) SaveState() error {
 			LastFailure:         lastFailureStr,
 			LastFailureMsg:      acc.Stats.LastFailureMsg,
 		}
-	}
 
-	// Serializar a JSON
+		snapshot[acc.ID] = acc.Stats
+	}
+	m.mu.RUnlock()
+
+	// Fase 2: Disk I/O (fuera de cualquier lock)
 	jsonData, err := json.MarshalIndent(stateData, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	// Escribir a tmp file
 	tmpPath := stateFilePath + ".tmp"
-	if err := os.WriteFile(tmpPath, jsonData, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, jsonData, 0600); err != nil {
 		return fmt.Errorf("failed to write tmp state file: %w", err)
 	}
 
@@ -128,6 +144,11 @@ func (m *Manager) SaveState() error {
 		_ = os.Remove(tmpPath)
 		return err
 	}
+
+	// Fase 3: Publicar snapshot solo después del éxito (bajo WLock)
+	m.mu.Lock()
+	m.lastSaved = snapshot
+	m.mu.Unlock()
 
 	return nil
 }

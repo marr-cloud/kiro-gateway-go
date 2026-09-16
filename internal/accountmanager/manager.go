@@ -86,7 +86,13 @@ func (m *Manager) SaveStatePeriodically(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			// Cancelado — guardar estado final si está dirty
-			_ = m.SaveState()
+			m.mu.RLock()
+			isDirty := m.hasStateChanged()
+			m.mu.RUnlock()
+
+			if isDirty {
+				_ = m.SaveState()
+			}
 			return
 		case <-ticker.C:
 			// Verificar si el estado cambió

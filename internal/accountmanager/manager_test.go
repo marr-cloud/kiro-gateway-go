@@ -565,6 +565,74 @@ func TestRenameRetry(t *testing.T) {
 	}
 }
 
+// TestSaveStatePeriodically_SkipsSavesWhenClean verifica que SaveStatePeriodically
+// solo guarda cuando el estado cambió (dirty-state optimization).
+func TestSaveStatePeriodically_SkipsSavesWhenClean(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Crear una cuenta simple
+	jsonPath := filepath.Join(tmpDir, "creds.json")
+	jsonCreds := map[string]interface{}{"refreshToken": "test-token"}
+	jsonData, _ := json.Marshal(jsonCreds)
+	_ = os.WriteFile(jsonPath, jsonData, 0644)
+
+	credsPath := filepath.Join(tmpDir, "credentials.json")
+	creds := []map[string]interface{}{
+		{
+			"type":    "json",
+			"enabled": true,
+			"path":    jsonPath,
+		},
+	}
+	credsData, _ := json.Marshal(creds)
+	_ = os.WriteFile(credsPath, credsData, 0644)
+
+	stateFile := filepath.Join(tmpDir, "state.json")
+
+	cfg := &config.Config{
+		KiroCredsFile:            credsPath,
+		AccountsStateFile:        stateFile,
+		StateSaveIntervalSeconds: 1,
+	}
+
+	mgr, _ := NewManager(cfg)
+	mgr.saveInterval = 20 * time.Millisecond // Intervalo corto para prueba
+	_ = mgr.LoadCredentials(context.Background())
+	_ = mgr.LoadState()
+
+	// Inyectar un contador de rename para detectar saves
+	renameCount := 0
+	originalRename := os.Rename
+	mgr.renameFn = func(old, new string) error {
+		renameCount++
+		return originalRename(old, new)
+	}
+
+	// Iniciar SaveStatePeriodically en goroutine
+	ctx, cancel := context.WithCancel(context.Background())
+	go mgr.SaveStatePeriodically(ctx)
+
+	// Dejar que corra por ~100ms (5 ticks)
+	time.Sleep(100 * time.Millisecond)
+
+	// Cancelar
+	cancel()
+
+	// Esperar a que la goroutine termine
+	time.Sleep(50 * time.Millisecond)
+
+	// Con dirty-state detection funcionando correctamente:
+	// - El primer tick verá estado limpio (no mutamos nada) → no guarda
+	// - Todos los ticks subsecuentes lo mismo → no guardan
+	// - El cancel causa un SaveState() final, pero el estado sigue limpio → no guarda
+	// Total: 0 saves
+	// Si dirty-state está ROTO (como era antes del fix):
+	// - Cada tick vería "dirty" → guardaría 5+ veces
+	if renameCount != 0 {
+		t.Errorf("Expected 0 renames for clean state, got %d", renameCount)
+	}
+}
+
 // Helper function para crear una SQLite DB con tabla auth_kv
 func setupSQLiteDB(t *testing.T, dbPath string) {
 	db, err := sql.Open("sqlite", dbPath)
