@@ -94,9 +94,14 @@ func (p *Parser) processToolStop(value map[string]any) {
 //	    input_str = str(input_data) if input_data else ''
 //
 // Usa los bytes crudos del campo "input" (no el mapa ya decodificado) para
-// que pyjson.Dumps/pyjson.Str reproduzcan el formato exacto de
+// que pyjson.DumpsASCII/pyjson.Str reproduzcan el formato exacto de
 // json.dumps/str de Python — un remarshal vía encoding/json ordenaría las
 // claves alfabéticamente en vez de conservar el orden de aparición.
+// json.dumps(input_data) en el original no pasa ensure_ascii (default
+// True), así que es DumpsASCII, no Dumps, el que reproduce su escapado —
+// Dumps es para los call sites que SÍ pasan ensure_ascii=False (el
+// tokenizer). str(input_data), en cambio, nunca escapa nada: pyjson.Str es
+// correcto tal cual.
 func toolInputArgString(fields map[string]json.RawMessage) string {
 	raw, ok := fields["input"]
 	if !ok {
@@ -112,7 +117,7 @@ func toolInputArgString(fields map[string]json.RawMessage) string {
 		if len(m) == 0 {
 			return ""
 		}
-		s, err := pyjson.Dumps(raw)
+		s, err := pyjson.DumpsASCII(raw)
 		if err != nil {
 			return ""
 		}
@@ -127,8 +132,9 @@ func toolInputArgString(fields map[string]json.RawMessage) string {
 
 // finalizeToolCall cierra el tool call en construcción: intenta parsear sus
 // argumentos acumulados como JSON y reformatearlos con las reglas de
-// json.dumps de Python; si falla, diagnostica truncamiento y dispone de "{}"
-// como argumentos. Port de _finalize_tool_call
+// json.dumps de Python (sin ensure_ascii=False — el original no lo pasa
+// aquí tampoco, así que es DumpsASCII); si falla, diagnostica truncamiento y
+// dispone de "{}" como argumentos. Port de _finalize_tool_call
 // (.upstream/kiro/parsers.py:403-462).
 //
 // El original distingue isinstance(args, str) / dict / otro, pero arguments
@@ -148,7 +154,7 @@ func (p *Parser) finalizeToolCall() {
 	var trunc *truncationInfo
 
 	if strings.TrimSpace(argsStr) != "" {
-		if reformatted, err := pyjson.Dumps(json.RawMessage(argsStr)); err == nil {
+		if reformatted, err := pyjson.DumpsASCII(json.RawMessage(argsStr)); err == nil {
 			finalArgs = reformatted
 		} else {
 			info := diagnoseJSONTruncation(argsStr)
@@ -250,7 +256,9 @@ func ParseBracketToolCalls(responseText string) []map[string]any {
 		}
 
 		jsonStr := responseText[jsonStart : jsonEnd+1]
-		argsFormatted, err := pyjson.Dumps(json.RawMessage(jsonStr))
+		// json.dumps(args) en el original (parsers.py:142) tampoco pasa
+		// ensure_ascii=False, así que DumpsASCII, no Dumps.
+		argsFormatted, err := pyjson.DumpsASCII(json.RawMessage(jsonStr))
 		if err != nil {
 			// json.JSONDecodeError en el original: logger.warning y se
 			// descarta este match, pero se sigue con los siguientes.

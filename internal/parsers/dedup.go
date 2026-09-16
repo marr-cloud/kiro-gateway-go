@@ -74,6 +74,16 @@ func DeduplicateToolCalls(toolCalls []map[string]any) []map[string]any {
 // no ausente) según las reglas de Python usadas por
 // `if not tc.get("id"): ...` — misma regla en las dos apariciones del
 // original (el bucle by_id y la list comprehension de result_without_id).
+//
+// anyStr(v) normaliza un id no-string a texto para poder usarlo como clave
+// de by_id (ver su comentario: json.Marshal + pyjson.Str, no la identidad
+// hash de Python). En la práctica todo id de este paquete es "call_<hex>"
+// (string), así que esto nunca se ejercita — pero si upstream alguna vez
+// viera un id no-string, dos valores que Python trataría como claves de
+// dict DISTINTAS (p.ej. el entero 5 y la cadena "5") podrían colisionar
+// aquí si su representación de texto coincidiera. No es el caso para
+// int/string con Marshal (5 -> "5", "5" -> "\"5\""), pero no es una
+// garantía general para cualquier tipo JSON.
 func idOf(tc map[string]any) (string, bool) {
 	v, ok := tc["id"]
 	if !ok || !isTruthy(v) {

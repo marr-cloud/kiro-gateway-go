@@ -6,8 +6,10 @@ package parsers
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 	"testing"
 
+	"github.com/marr-cloud/kiro-gateway-go/internal/pyjson"
 	"github.com/marr-cloud/kiro-gateway-go/internal/testutil"
 )
 
@@ -72,11 +74,17 @@ var toolCallIDPattern = regexp.MustCompile(`^call_[0-9a-f]{8}$`)
 // canónico", líneas 44-48): el valor exacto depende de cuántas veces se
 // llamó al generador en TODO el resto de la sesión de grabación (2032 casos,
 // 64 objetivos), no solo en este fixture. No hay forma de reproducir ese
-// contador desde un fixture aislado, así que — igual que docs/CORPUS.md ya
-// documenta para streaming_openai/streaming_anthropic (ids chatcmpl-<hex>,
-// msg_<hex>) y para la rama uuid4 de generate_conversation_id — se comprueba
-// la FORMA del id ("call_" + 8 hex), no el valor exacto. name, arguments y
-// type sí se comparan byte a byte.
+// contador desde un fixture aislado, así que se comprueba la FORMA del id
+// ("call_" + 8 hex), no el valor exacto — mismo enfoque que ya usa
+// internal/utils/utils_test.go:316 (`uuidRe.MatchString`, validando un uuid
+// generado por forma en vez de por valor) y que docs/CORPUS.md:252 exige
+// para el objetivo utils/generate_conversation_id ("Comprobar la forma...,
+// no el valor"). docs/CORPUS.md también anota el mismo problema para los
+// ids chatcmpl-<hex>/msg_<hex> de streaming_openai/streaming_anthropic,
+// pero esos paquetes son de las Tasks 7-8, todavía sin portar en este punto
+// de la rama — no son un precedente ya EXISTENTE en código Go, solo un
+// problema ya documentado a futuro. name, arguments y type sí se comparan
+// byte a byte.
 func TestParseBracketToolCalls(t *testing.T) {
 	cases := testutil.LoadCorpus(t, "parsers/parse_bracket_tool_calls")
 	if len(cases) != 11 {
@@ -222,6 +230,13 @@ func TestDiagnoseJSONTruncation(t *testing.T) {
 		{"not_json", "not json at all", truncationInfo{false, "malformed JSON", 15}},
 		{"nested_missing_brace", `{"a": 1, "b": {"c": 2}`, truncationInfo{true, "unbalanced braces (2 open, 1 close)", 22}},
 		{"unclosed_string_trailing_escape", `{"a": "va\lue"`, truncationInfo{true, "missing 1 closing brace(s)", 14}},
+		// Los 3 casos "unclosed_string*" de arriba empiezan por '{' y no
+		// terminan en '}', así que los tres caen en la rama "missing N
+		// closing brace(s)" ANTES de llegar nunca a la paridad de comillas —
+		// ninguno ejercita de verdad la rama final "unclosed string literal"
+		// (truncation.go, tras los chequeos de llaves/corchetes). Este caso
+		// no tiene ninguna llave: solo así se llega a esa rama.
+		{"unclosed_string_no_braces", `no braces "odd`, truncationInfo{true, "unclosed string literal", 14}},
 	}
 
 	for _, c := range cases {
@@ -231,5 +246,54 @@ func TestDiagnoseJSONTruncation(t *testing.T) {
 				t.Errorf("diagnoseJSONTruncation(%q) = %+v, want %+v", c.input, got, c.want)
 			}
 		})
+	}
+}
+
+// TestFeedNonASCIIToolArgumentEscapesLikePythonJSONDumps es la regresión
+// pedida en la ronda de revisión 1 para el Critical 1 (ensure_ascii):
+// alimenta el parser con un tool call cuyo input trae un code point no-ASCII
+// (é, U+00E9) y comprueba que los argumentos finales del tool call
+// resultante están escapados con \uXXXX — como json.dumps(x) de Python
+// (ensure_ascii=True, el default que usa .upstream/kiro/parsers.py) — y no
+// contienen el carácter en crudo, que es lo que un pyjson.Dumps
+// (ensure_ascii=False) habría producido en su lugar.
+//
+// El code point se construye con string(rune(0x00e9)) en vez de tecleado
+// literalmente, por la misma razón documentada junto a uEscape/backslash en
+// pyjson_test.go: una secuencia con pinta de escape \uXXXX tecleada a mano
+// en el código fuente de un test corre el riesgo de ser reinterpretada como
+// el carácter Unicode real antes de que el test llegue a compilarse.
+func TestFeedNonASCIIToolArgumentEscapesLikePythonJSONDumps(t *testing.T) {
+	eacute := string(rune(0x00e9)) // é
+	path := "/tmp/caf" + eacute
+
+	p := NewParser()
+	p.Feed([]byte(`{"name":"func","toolUseId":"call_regression"}`))
+	p.Feed([]byte(`{"input":{"path":"` + path + `"}}`))
+	p.Feed([]byte(`{"stop":true}`))
+
+	events := p.Finish()
+	if len(events) != 1 {
+		t.Fatalf("Finish() produjo %d eventos, quiero 1: %#v", len(events), events)
+	}
+	if events[0].Kind != "tool_call" {
+		t.Fatalf("Kind = %q, quiero \"tool_call\"", events[0].Kind)
+	}
+
+	fn, ok := events[0].Value["function"].(map[string]any)
+	if !ok {
+		t.Fatalf("Value[\"function\"] no es un map[string]any: %#v", events[0].Value["function"])
+	}
+	args, _ := fn["arguments"].(string)
+
+	want, err := pyjson.DumpsASCII(json.RawMessage(`{"path":"` + path + `"}`))
+	if err != nil {
+		t.Fatalf("DumpsASCII: %v", err)
+	}
+	if args != want {
+		t.Fatalf("arguments = %s, quiero %s (paridad con json.dumps de Python)", args, want)
+	}
+	if strings.Contains(args, eacute) {
+		t.Fatalf("arguments = %s contiene el carácter no-ASCII crudo sin escapar — regresión del Critical 1 (ensure_ascii)", args)
 	}
 }

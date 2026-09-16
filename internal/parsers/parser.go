@@ -17,7 +17,12 @@ import (
 // "context_usage" para los eventos que produce Feed, o "tool_call" para los
 // que produce Finish (ver su comentario). Raw es una copia de los bytes JSON
 // originales — no un slice del buffer interno, para que mutaciones
-// posteriores del buffer no lo corrompan (D5). Value es el objeto JSON
+// posteriores del buffer no lo corrompan (D5). Raw es nil para los eventos
+// Kind:"tool_call" que produce Finish: son una adición Go-only sin
+// equivalente upstream, y un tool call agregado no corresponde a un único
+// rango contiguo del buffer (puede construirse a partir de varios
+// chunks/eventos, ver finalizeToolCall) — un consumidor que asuma Raw
+// siempre no-nil debe comprobar Kind primero. Value es el objeto JSON
 // completo ya decodificado (siempre un objeto, porque los 7 prefijos
 // reconocidos empiezan todos por `{"`); para "content" el campo relevante es
 // Value["content"], para "usage" es Value["usage"], para "context_usage" es
@@ -50,6 +55,11 @@ var eventPatterns = []eventPattern{
 
 // Parser es el equivalente Go de AwsEventStreamParser
 // (.upstream/kiro/parsers.py:211-569).
+//
+// Parser no es seguro para uso concurrente — no lleva mutex, a propósito:
+// un Parser por stream, en una sola goroutine, tal como exige D4 (spec
+// §5.4). Un llamador que necesite procesar varios streams a la vez debe
+// crear un *Parser por stream, no compartir uno.
 type Parser struct {
 	buffer          bytes.Buffer
 	lastContent     any          // Optional[str] en el original, pero en la práctica puede llevar cualquier tipo JSON (ver processContent).
@@ -132,6 +142,18 @@ func (p *Parser) Feed(chunk []byte) []Event {
 				events = append(events, ev)
 			}
 		case "tool_start":
+			// rawCopy se decodifica dos veces aquí: una vez arriba en
+			// `value` (map[string]any, para toolUseId/name/stop) y otra en
+			// fieldsRaw (map[string]json.RawMessage, para el campo "input"
+			// crudo que necesita toolInputArgString — ver su comentario
+			// sobre por qué no puede derivarse de `value` sin perder el
+			// formato/orden exacto que exige pyjson.DumpsASCII). Es
+			// redundante en CPU, no en corrección: rawCopy son unos pocos
+			// cientos de bytes como mucho, y fusionar los dos decodes
+			// exigiría reescribir processContent/processToolStart/
+			// processToolInput/processToolStop para recibir fieldsRaw en
+			// vez de value en todos los casos — no se hace aquí porque no
+			// es un cambio trivial y el coste real es insignificante.
 			var fieldsRaw map[string]json.RawMessage
 			_ = json.Unmarshal(rawCopy, &fieldsRaw)
 			p.processToolStart(value, fieldsRaw)
