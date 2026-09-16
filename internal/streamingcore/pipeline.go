@@ -1,0 +1,239 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Port a Go de jwadow/kiro-gateway. Ver NOTICE.
+
+package streamingcore
+
+import (
+	"encoding/json"
+
+	"github.com/marr-cloud/kiro-gateway-go/internal/parsers"
+	"github.com/marr-cloud/kiro-gateway-go/internal/thinkingparser"
+)
+
+// Pipeline orchestrates the parsing and thinking detection across streaming events.
+// It stitches parsers.Parser output (Task 1) through thinkingparser.Parser (Task 2)
+// into a unified KiroEvent stream.
+type Pipeline struct {
+	parser   *parsers.Parser
+	thinking *thinkingparser.Parser
+}
+
+// NewPipeline creates a new Pipeline with the specified handling mode and initial buffer size
+// for the thinking parser.
+func NewPipeline(handling string, initialBufferSize int) *Pipeline {
+	return &Pipeline{
+		parser:   parsers.NewParser(),
+		thinking: thinkingparser.NewParser(handling, initialBufferSize),
+	}
+}
+
+// Feed processes a chunk of bytes through the parser and thinking parser,
+// returning a slice of unified KiroEvent objects.
+// The order of emitted events is: thinking events before content events,
+// followed by other event types (usage, context_usage, tool_use, error).
+func (p *Pipeline) Feed(chunk []byte) []KiroEvent {
+	var events []KiroEvent
+
+	// Feed chunk to the parsers.Parser
+	parserEvents := p.parser.Feed(chunk)
+
+	// Process each event from the parser
+	for _, parserEvent := range parserEvents {
+		switch parserEvent.Kind {
+		case "content":
+			// Extract content string and feed to thinking parser
+			if contentVal, ok := parserEvent.Value["content"]; ok {
+				contentStr, _ := contentVal.(string)
+
+				// Feed to thinking parser
+				thinking, content := p.thinking.Feed(contentStr)
+
+				// Emit thinking event first if present
+				if thinking != "" {
+					events = append(events, KiroEvent{
+						Kind:     "thinking",
+						Thinking: thinking,
+					})
+				}
+
+				// Emit content event if present
+				if content != "" {
+					events = append(events, KiroEvent{
+						Kind:    "content",
+						Content: content,
+					})
+				}
+			}
+
+		case "usage":
+			// Extract usage dict and build UsageData
+			if usageVal, ok := parserEvent.Value["usage"]; ok {
+				if usageMap, ok := usageVal.(map[string]any); ok {
+					usageData := extractUsageData(usageMap)
+					events = append(events, KiroEvent{
+						Kind:  "usage",
+						Usage: usageData,
+					})
+				}
+			}
+
+		case "context_usage":
+			// Extract context usage percentage
+			if contextVal, ok := parserEvent.Value["contextUsagePercentage"]; ok {
+				if contextFloat, ok := contextVal.(float64); ok {
+					events = append(events, KiroEvent{
+						Kind:         "context_usage",
+						ContextUsage: contextFloat,
+					})
+				}
+			}
+
+		case "tool_call":
+			// Build ToolUseData from tool call structure
+			toolUseData := extractToolUseData(parserEvent.Value)
+			if toolUseData != nil {
+				events = append(events, KiroEvent{
+					Kind:    "tool_use",
+					ToolUse: toolUseData,
+				})
+			}
+		}
+	}
+
+	// Check for truncation diagnosis and emit error event
+	if diagnosis, ok := p.parser.TruncationDiagnosis(); ok {
+		events = append(events, KiroEvent{
+			Kind:  "error",
+			Error: diagnosis,
+		})
+	}
+
+	return events
+}
+
+// Finish flushes any remaining buffered content from the thinking parser
+// and returns any pending tool calls from the parser.
+func (p *Pipeline) Finish() []KiroEvent {
+	var events []KiroEvent
+
+	// Finish thinking parser and get any pending content
+	thinking, content := p.thinking.Finish()
+
+	// Emit thinking event if present
+	if thinking != "" {
+		events = append(events, KiroEvent{
+			Kind:     "thinking",
+			Thinking: thinking,
+		})
+	}
+
+	// Emit content event if present
+	if content != "" {
+		events = append(events, KiroEvent{
+			Kind:    "content",
+			Content: content,
+		})
+	}
+
+	// Finish parser and get any pending tool calls
+	parserEvents := p.parser.Finish()
+	for _, parserEvent := range parserEvents {
+		if parserEvent.Kind == "tool_call" {
+			toolUseData := extractToolUseData(parserEvent.Value)
+			if toolUseData != nil {
+				events = append(events, KiroEvent{
+					Kind:    "tool_use",
+					ToolUse: toolUseData,
+				})
+			}
+		}
+	}
+
+	// Check for any truncation diagnosis
+	if diagnosis, ok := p.parser.TruncationDiagnosis(); ok {
+		events = append(events, KiroEvent{
+			Kind:  "error",
+			Error: diagnosis,
+		})
+	}
+
+	return events
+}
+
+// extractUsageData converts a usage map from the parser into a UsageData struct.
+func extractUsageData(usageMap map[string]any) *UsageData {
+	data := &UsageData{}
+
+	// Extract input tokens
+	if inputVal, ok := usageMap["input_tokens"]; ok {
+		if inputInt, ok := inputVal.(float64); ok {
+			data.Input = int(inputInt)
+		}
+	}
+
+	// Extract output tokens
+	if outputVal, ok := usageMap["output_tokens"]; ok {
+		if outputInt, ok := outputVal.(float64); ok {
+			data.Output = int(outputInt)
+		}
+	}
+
+	// Extract cache read tokens
+	if cacheReadVal, ok := usageMap["cache_read_tokens"]; ok {
+		if cacheReadInt, ok := cacheReadVal.(float64); ok {
+			data.CacheRead = int(cacheReadInt)
+		}
+	}
+
+	// Extract cache creation tokens
+	if cacheCreationVal, ok := usageMap["cache_creation_tokens"]; ok {
+		if cacheCreationInt, ok := cacheCreationVal.(float64); ok {
+			data.CacheCreation = int(cacheCreationInt)
+		}
+	}
+
+	return data
+}
+
+// extractToolUseData converts a tool_call event value into ToolUseData.
+// The tool call structure from parsers is:
+//
+//	{
+//	  "id": string,
+//	  "type": "function",
+//	  "function": {
+//	    "name": string,
+//	    "arguments": string (JSON formatted)
+//	  }
+//	}
+func extractToolUseData(toolCallValue map[string]any) *ToolUseData {
+	// Extract id
+	var id string
+	if idVal, ok := toolCallValue["id"]; ok {
+		id = idVal.(string)
+	}
+
+	// Extract function data
+	var name string
+	var input map[string]any
+	if funcVal, ok := toolCallValue["function"].(map[string]any); ok {
+		if nameVal, ok := funcVal["name"]; ok {
+			name, _ = nameVal.(string)
+		}
+
+		if argsVal, ok := funcVal["arguments"].(string); ok {
+			input = make(map[string]any)
+			_ = json.Unmarshal([]byte(argsVal), &input)
+		}
+	}
+
+	if input == nil {
+		input = make(map[string]any)
+	}
+
+	return &ToolUseData{
+		ID:    id,
+		Name:  name,
+		Input: input,
+	}
+}

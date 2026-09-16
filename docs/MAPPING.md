@@ -27,7 +27,7 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `converters_core.py` | `internal/converterscore` | `types.go`, `extract.go`, `text.go`, `tools.go`, `images.go`, `normalize.go`, `thinking.go`, `payload.go` |
 | `converters_openai.py` | `internal/convertersopenai` | `converters.go` |
 | `converters_anthropic.py` | `internal/convertersanthropic` | `converters.go` |
-| `streaming_core.py` | `internal/streamingcore` | |
+| `streaming_core.py` | `internal/streamingcore` | `events.go`, `pipeline.go`, `pipeline_test.go` (Task 6 porta la clase KiroEvent y el pipeline que une parsers.Parser (Task 1) y thinkingparser.Parser (Task 2) en un stream de eventos unificado. El pipeline procesa eventos del parser y aplica thinking splitting: para cada evento "content", extrae el valor, lo pasa al thinking parser, y emite eventos "thinking" (si hay) y "content" (si hay) en ese orden. Maneja también "usage" → UsageData, "context_usage" → float, "tool_call" → ToolUseData. Si hay diagnóstico de truncamiento, emite un evento "error" con el mensaje del diagnóstico. Feed() procesa un chunk, Finish() vacía buffers pendientes.) |
 | `streaming_openai.py` | `internal/streamingopenai` | |
 | `streaming_anthropic.py` | `internal/streaminganthropic` | |
 | `routes_openai.py` | `internal/routesopenai` | |
