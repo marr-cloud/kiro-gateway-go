@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,6 +17,38 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/auth"
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
 )
+
+// newAuthManagerWithFreshToken builds a real *auth.Manager backed by a Kiro
+// Desktop JSON credentials file with a far-future expiresAt. AccessToken()
+// returns the pre-loaded token immediately without triggering refresh — the
+// path the runtime-vs-old-endpoint model-catalog tests need.
+func newAuthManagerWithFreshToken(t *testing.T, token string) *auth.Manager {
+	t.Helper()
+	dir := t.TempDir()
+	credsPath := filepath.Join(dir, "creds.json")
+	creds := map[string]any{
+		"accessToken":  token,
+		"refreshToken": "test-refresh-" + token,
+		"profileArn":   "arn:aws:codewhisperer:us-east-1:123456789012:profile/test",
+		"region":       "us-east-1",
+		"expiresAt":    "2099-12-31T23:59:59.999999999Z",
+	}
+	data, err := json.Marshal(creds)
+	if err != nil {
+		t.Fatalf("marshal creds: %v", err)
+	}
+	if err := os.WriteFile(credsPath, data, 0o600); err != nil {
+		t.Fatalf("write creds: %v", err)
+	}
+	authMgr, err := auth.NewManagerForAccount(&config.Config{
+		KiroCredsFile: credsPath,
+		KiroRegion:    "us-east-1",
+	}, "")
+	if err != nil {
+		t.Fatalf("auth.NewManagerForAccount: %v", err)
+	}
+	return authMgr
+}
 
 // TestGetAllAvailableModels returns union of models from all enabled accounts
 func TestGetAllAvailableModels(t *testing.T) {
@@ -350,5 +384,187 @@ func TestInitialize_ParallelismCapped(t *testing.T) {
 	maxConcur := atomic.LoadInt32(&maxRunning)
 	if maxConcur > int32(initConcurrency) {
 		t.Errorf("Max concurrent goroutines (%d) exceeded limit (%d)", maxConcur, initConcurrency)
+	}
+}
+
+// TestRefreshAccountModels_OldEndpointDynamicFetch verifies the old-endpoint
+// path: force isRuntimeEndpoint=false, point at an httptest server, and check
+// that refreshAccountModels parses the response, updates the account, and sent
+// the required upstream query parameters (origin=AI_EDITOR + profileArn).
+func TestRefreshAccountModels_OldEndpointDynamicFetch(t *testing.T) {
+	var hits int32
+	var gotOrigin, gotProfileArn, gotMethod string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		gotOrigin = r.URL.Query().Get("origin")
+		gotProfileArn = r.URL.Query().Get("profileArn")
+		gotMethod = r.Method
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":["A","B","C"]}`))
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		KiroRegion:      "us-east-1",
+		AccountCacheTTL: 3600,
+	}
+	m, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	authMgr := newAuthManagerWithFreshToken(t, "tok-old-endpoint")
+	m.mu.Lock()
+	m.accounts = append(m.accounts, &Account{
+		ID:         "acc-old",
+		Enabled:    true,
+		Auth:       authMgr,
+		ProfileARN: "arn:aws:codewhisperer:us-east-1:123456789012:profile/test",
+		Models:     ModelAccountList{},
+	})
+	m.isRuntimeEndpointOverride = func(_ string) bool { return false }
+	m.listURLOverride = func(_ string) string { return server.URL + "/ListAvailableModels" }
+	m.mu.Unlock()
+
+	if err := m.refreshAccountModels(context.Background(), "acc-old"); err != nil {
+		t.Fatalf("refreshAccountModels: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Errorf("expected 1 hit, got %d", got)
+	}
+	if gotMethod != "GET" {
+		t.Errorf("expected GET, got %s", gotMethod)
+	}
+	if gotOrigin != "AI_EDITOR" {
+		t.Errorf("expected origin=AI_EDITOR, got %q", gotOrigin)
+	}
+	if gotProfileArn != "arn:aws:codewhisperer:us-east-1:123456789012:profile/test" {
+		t.Errorf("expected profileArn set for KIRO_DESKTOP account, got %q", gotProfileArn)
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	got := m.accounts[0].Models.Models
+	want := []string{"A", "B", "C"}
+	if len(got) != len(want) {
+		t.Fatalf("models: got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("model[%d]: got %q, want %q", i, got[i], want[i])
+		}
+	}
+	if m.accounts[0].Models.LoadedAt.IsZero() {
+		t.Errorf("LoadedAt should be non-zero after successful fetch")
+	}
+}
+
+// TestRefreshAccountModels_OldEndpointFallbackOn5xx verifies that when the
+// old-endpoint HTTP fetch fails (5xx across all retries) the account silently
+// falls back to fallbackModels — matching upstream account_manager.py:534-541.
+func TestRefreshAccountModels_OldEndpointFallbackOn5xx(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		KiroRegion:      "us-east-1",
+		AccountCacheTTL: 3600,
+	}
+	m, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	authMgr := newAuthManagerWithFreshToken(t, "tok-5xx")
+	m.mu.Lock()
+	m.accounts = append(m.accounts, &Account{
+		ID:      "acc-5xx",
+		Enabled: true,
+		Auth:    authMgr,
+		Models:  ModelAccountList{},
+	})
+	m.isRuntimeEndpointOverride = func(_ string) bool { return false }
+	m.listURLOverride = func(_ string) string { return server.URL + "/ListAvailableModels" }
+	m.mu.Unlock()
+
+	if err := m.refreshAccountModels(context.Background(), "acc-5xx"); err != nil {
+		t.Fatalf("refreshAccountModels should not propagate 5xx errors, got: %v", err)
+	}
+
+	got := atomic.LoadInt32(&hits)
+	if got < 2 {
+		t.Errorf("expected retries to fire (>=2 hits), got %d — RequestWithRetry may be bypassed", got)
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	models := m.accounts[0].Models.Models
+	if len(models) != len(fallbackModels) {
+		t.Fatalf("expected fallback list of %d models after 5xx exhaustion, got %d", len(fallbackModels), len(models))
+	}
+	if models[0] != fallbackModels[0] || models[len(models)-1] != fallbackModels[len(fallbackModels)-1] {
+		t.Errorf("fallback list content mismatch: got first=%q last=%q, want first=%q last=%q",
+			models[0], models[len(models)-1], fallbackModels[0], fallbackModels[len(fallbackModels)-1])
+	}
+	if m.accounts[0].Models.LoadedAt.IsZero() {
+		t.Errorf("LoadedAt should be set even on fallback")
+	}
+}
+
+// TestInitialize_ExpiredTTLRefreshes proves that refreshAccountModels fires
+// when the account's Models.LoadedAt+TTL has passed, and successfully updates
+// the account from the mock server (the correct-path replacement for the test
+// deleted in fix round 1).
+func TestInitialize_ExpiredTTLRefreshes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":["fresh-model"]}`))
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		KiroRegion:      "us-east-1",
+		AccountCacheTTL: 3600,
+	}
+	m, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	authMgr := newAuthManagerWithFreshToken(t, "tok-ttl")
+	staleLoadedAt := time.Now().Add(-2 * time.Hour)
+	m.mu.Lock()
+	m.accounts = append(m.accounts, &Account{
+		ID:      "acc-ttl",
+		Enabled: true,
+		Auth:    authMgr,
+		Models: ModelAccountList{
+			Models:   []string{"stale"},
+			LoadedAt: staleLoadedAt,
+			TTL:      1 * time.Hour,
+		},
+	})
+	m.isRuntimeEndpointOverride = func(_ string) bool { return false }
+	m.listURLOverride = func(_ string) string { return server.URL + "/ListAvailableModels" }
+	m.mu.Unlock()
+
+	if err := m.refreshAccountModels(context.Background(), "acc-ttl"); err != nil {
+		t.Fatalf("refreshAccountModels: %v", err)
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	models := m.accounts[0].Models.Models
+	if len(models) != 1 || models[0] != "fresh-model" {
+		t.Errorf("expected refreshed list [fresh-model], got %v", models)
+	}
+	if !m.accounts[0].Models.LoadedAt.After(staleLoadedAt) {
+		t.Errorf("LoadedAt should have advanced past staleLoadedAt; got %v vs %v",
+			m.accounts[0].Models.LoadedAt, staleLoadedAt)
 	}
 }
