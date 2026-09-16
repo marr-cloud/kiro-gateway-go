@@ -14,24 +14,6 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
 )
 
-// Formatter converts streamingcore.KiroEvent objects into OpenAI SSE-formatted chunks.
-// It accumulates state across multiple Handle() calls and finalizes with Finish().
-//
-// Each chunk is a chat.completion.chunk with the shape:
-//
-//	{
-//	  "id": "chatcmpl-<32hex>",
-//	  "object": "chat.completion.chunk",
-//	  "created": <unix timestamp>,
-//	  "model": "<model>",
-//	  "choices": [{
-//	    "index": 0,
-//	    "delta": {...},
-//	    "finish_reason": null | "stop" | "tool_calls" | "length"
-//	  }]
-//	}
-//
-// Not safe for concurrent use. Each streaming response owns one Formatter instance.
 // ThinkingHandling determines how thinking content is formatted in OpenAI chunks.
 type ThinkingHandling string
 
@@ -42,6 +24,10 @@ const (
 	AsContent ThinkingHandling = "as_content"
 )
 
+// Formatter converts streamingcore.KiroEvent objects into OpenAI SSE-formatted chunks.
+// It accumulates state across multiple Handle() calls and finalizes with Finish().
+//
+// Not safe for concurrent use. Each streaming response owns one Formatter instance.
 type Formatter struct {
 	completionID           string
 	model                  string
@@ -50,23 +36,18 @@ type Formatter struct {
 	fullContent            string
 	fullThinkingContent    string
 	toolCallsFromStream    []map[string]any
-	meteringData           *UsageData
-	meteringDataRaw        map[string]any // original metering data from event
+	creditsUsed            float64           // metering data float value
 	contextUsagePercentage float64
 	completionTokens       int
 	thinkingHandling       ThinkingHandling
-}
-
-// UsageData mirrors the usage metrics from KiroEvent.
-type UsageData struct {
-	Input           int
-	Output          int
-	CacheRead       int
-	CacheCreation   int
+	receivedStopSignal     bool              // did we get a "usage" or "context_usage" event?
+	requestMessages        []map[string]any  // for fallback prompt token calculation
+	requestTools           []map[string]any  // for fallback prompt token calculation
 }
 
 // New creates a new Formatter for the given model.
 // thinkingHandling determines how to format thinking content (defaults to AsContent).
+// requestMessages and requestTools are used for fallback prompt_tokens calculation if context_usage is not available.
 func New(model string, thinkingHandling ...ThinkingHandling) *Formatter {
 	handling := AsContent
 	if len(thinkingHandling) > 0 {
@@ -78,11 +59,14 @@ func New(model string, thinkingHandling ...ThinkingHandling) *Formatter {
 		model:            model,
 		created:          time.Now().Unix(),
 		firstChunk:       true,
-		fullContent:      "",
-		fullThinkingContent: "",
-		toolCallsFromStream: []map[string]any{},
 		thinkingHandling: handling,
 	}
+}
+
+// SetRequestContext sets the request messages and tools for prompt token calculation fallback.
+func (f *Formatter) SetRequestContext(messages []map[string]any, tools []map[string]any) {
+	f.requestMessages = messages
+	f.requestTools = tools
 }
 
 // Handle processes a single KiroEvent and writes the corresponding SSE chunk(s) to w.
@@ -102,30 +86,17 @@ func (f *Formatter) Handle(ev streamingcore.KiroEvent, w io.Writer) error {
 
 	case "tool_use":
 		if ev.ToolUse != nil {
-			// Collect tool call for later emission
 			toolCall := f.toolUseToOpenAI(ev.ToolUse)
 			f.toolCallsFromStream = append(f.toolCallsFromStream, toolCall)
 		}
 
 	case "usage":
-		if ev.Usage != nil {
-			f.meteringData = &UsageData{
-				Input:         ev.Usage.Input,
-				Output:        ev.Usage.Output,
-				CacheRead:     ev.Usage.CacheRead,
-				CacheCreation: ev.Usage.CacheCreation,
-			}
-			// Also store as a dict for credits_used field
-			f.meteringDataRaw = map[string]any{
-				"inputTokenCount":     ev.Usage.Input,
-				"outputTokenCount":    ev.Usage.Output,
-				"cacheReadTokenCount": ev.Usage.CacheRead,
-				"cacheCreationTokenCount": ev.Usage.CacheCreation,
-			}
-		}
+		// usage event is just a float for credits_used
+		f.receivedStopSignal = true
 
 	case "context_usage":
 		f.contextUsagePercentage = ev.ContextUsage
+		f.receivedStopSignal = true
 	}
 
 	return nil
@@ -144,7 +115,7 @@ func (f *Formatter) Finish(w io.Writer) error {
 	// Calculate tokens for completion
 	f.completionTokens = len(tokenizer.EncodeOrdinary(f.fullContent + f.fullThinkingContent))
 
-	// Determine finish_reason (must happen before calculateUsage)
+	// Determine finish_reason
 	finishReason := f.determineFinishReason()
 
 	// Emit final chunk with usage
@@ -161,11 +132,55 @@ func (f *Formatter) Finish(w io.Writer) error {
 	return nil
 }
 
+// chunkDelta holds the delta object in a chunk, with ordered fields.
+type chunkDelta struct {
+	Role             string          `json:"role,omitempty"`
+	Content          string          `json:"content,omitempty"`
+	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	ToolCalls        []toolCall      `json:"tool_calls,omitempty"`
+}
+
+// toolCall holds a tool call in the delta.
+type toolCall struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+// chunkChoice holds a choice in a chunk.
+type chunkChoice struct {
+	Index        int        `json:"index"`
+	Delta        chunkDelta `json:"delta"`
+	FinishReason *string    `json:"finish_reason"`
+}
+
+// chunkUsage holds the usage object in a chunk.
+type chunkUsage struct {
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	TotalTokens      int     `json:"total_tokens"`
+	CreditsUsed      *float64 `json:"credits_used,omitempty"`
+}
+
+// chatCompletionChunk is the full chunk structure with ordered fields.
+type chatCompletionChunk struct {
+	ID      string        `json:"id"`
+	Object  string        `json:"object"`
+	Created int64         `json:"created"`
+	Model   string        `json:"model"`
+	Choices []chunkChoice `json:"choices"`
+	Usage   *chunkUsage   `json:"usage,omitempty"`
+}
+
 // emitContentChunk emits a single content chunk.
 func (f *Formatter) emitContentChunk(content string, w io.Writer) error {
-	delta := map[string]any{"content": content}
+	delta := chunkDelta{Content: content}
 	if f.firstChunk {
-		delta["role"] = "assistant"
+		delta.Role = "assistant"
 		f.firstChunk = false
 	}
 
@@ -180,19 +195,16 @@ func (f *Formatter) emitContentChunk(content string, w io.Writer) error {
 }
 
 // emitThinkingChunk emits a thinking/reasoning chunk.
-// The delta key depends on the thinkingHandling mode:
-// - AsReasoningContent: uses "reasoning_content"
-// - AsContent: uses "content"
 func (f *Formatter) emitThinkingChunk(thinking string, w io.Writer) error {
-	delta := map[string]any{}
+	delta := chunkDelta{}
 	if f.thinkingHandling == AsReasoningContent {
-		delta["reasoning_content"] = thinking
+		delta.ReasoningContent = thinking
 	} else {
-		delta["content"] = thinking
+		delta.Content = thinking
 	}
 
 	if f.firstChunk {
-		delta["role"] = "assistant"
+		delta.Role = "assistant"
 		f.firstChunk = false
 	}
 
@@ -209,21 +221,19 @@ func (f *Formatter) emitThinkingChunk(thinking string, w io.Writer) error {
 // emitToolCallsChunk emits the tool calls in a single chunk.
 func (f *Formatter) emitToolCallsChunk(toolCalls []map[string]any, w io.Writer) error {
 	// Index tool calls for OpenAI format
-	indexedToolCalls := make([]map[string]any, len(toolCalls))
+	indexedToolCalls := make([]toolCall, len(toolCalls))
 	for i, tc := range toolCalls {
 		func_ := tc["function"].(map[string]any)
-		indexedToolCalls[i] = map[string]any{
-			"index": i,
-			"id":    tc["id"],
-			"type":  tc["type"],
-			"function": map[string]any{
-				"name":      func_["name"],
-				"arguments": func_["arguments"],
-			},
+		indexedToolCalls[i] = toolCall{
+			Index: i,
+			ID:    tc["id"].(string),
+			Type:  tc["type"].(string),
 		}
+		indexedToolCalls[i].Function.Name = func_["name"].(string)
+		indexedToolCalls[i].Function.Arguments = func_["arguments"].(string)
 	}
 
-	delta := map[string]any{"tool_calls": indexedToolCalls}
+	delta := chunkDelta{ToolCalls: indexedToolCalls}
 	chunk := f.makeChunk(delta, nil)
 	data, err := json.Marshal(chunk)
 	if err != nil {
@@ -236,8 +246,22 @@ func (f *Formatter) emitToolCallsChunk(toolCalls []map[string]any, w io.Writer) 
 
 // emitFinalChunk emits the final chunk with finish_reason and usage.
 func (f *Formatter) emitFinalChunk(finishReason string, usage map[string]any, w io.Writer) error {
-	chunk := f.makeChunk(map[string]any{}, &finishReason)
-	chunk["usage"] = usage
+	chunk := f.makeChunk(chunkDelta{}, &finishReason)
+
+	// Convert usage map to chunkUsage struct
+	chunkUsage := &chunkUsage{
+		PromptTokens:     toInt(usage["prompt_tokens"]),
+		CompletionTokens: toInt(usage["completion_tokens"]),
+		TotalTokens:      toInt(usage["total_tokens"]),
+	}
+
+	if creditsUsed, ok := usage["credits_used"]; ok {
+		if f, isFloat := creditsUsed.(float64); isFloat {
+			chunkUsage.CreditsUsed = &f
+		}
+	}
+
+	chunk.Usage = chunkUsage
 
 	data, err := json.Marshal(chunk)
 	if err != nil {
@@ -249,24 +273,31 @@ func (f *Formatter) emitFinalChunk(finishReason string, usage map[string]any, w 
 }
 
 // makeChunk creates a base chunk structure with the given delta and optional finish_reason.
-func (f *Formatter) makeChunk(delta map[string]any, finishReason *string) map[string]any {
-	reason := interface{}(nil)
-	if finishReason != nil {
-		reason = *finishReason
-	}
-
-	return map[string]any{
-		"id":      f.completionID,
-		"object":  "chat.completion.chunk",
-		"created": f.created,
-		"model":   f.model,
-		"choices": []map[string]any{
+func (f *Formatter) makeChunk(delta chunkDelta, finishReason *string) *chatCompletionChunk {
+	return &chatCompletionChunk{
+		ID:      f.completionID,
+		Object:  "chat.completion.chunk",
+		Created: f.created,
+		Model:   f.model,
+		Choices: []chunkChoice{
 			{
-				"index":         0,
-				"delta":         delta,
-				"finish_reason": reason,
+				Index:        0,
+				Delta:        delta,
+				FinishReason: finishReason,
 			},
 		},
+	}
+}
+
+// toInt converts a value to int.
+func toInt(v any) int {
+	switch val := v.(type) {
+	case int:
+		return val
+	case float64:
+		return int(val)
+	default:
+		return 0
 	}
 }
 
@@ -287,62 +318,95 @@ func (f *Formatter) toolUseToOpenAI(tu *streamingcore.ToolUseData) map[string]an
 }
 
 // determineFinishReason determines the finish reason based on what was emitted.
-// Truncation detection: if stream_completed_normally is false (no usage or context_usage received)
-// and we have content, then content was truncated.
+// finish_reason = "stop" when normal completion,
+//   "tool_calls" when tool calls were emitted,
+//   "length" when content was truncated (no completion signal received).
 func (f *Formatter) determineFinishReason() string {
-	// Check if we received completion signals (usage or context_usage)
-	streamCompletedNormally := f.meteringData != nil || f.contextUsagePercentage > 0
-
-	// Detect content truncation
-	contentWasTruncated := !streamCompletedNormally && len(f.fullContent) > 0 && len(f.toolCallsFromStream) == 0
-
-	if contentWasTruncated {
-		return "length"
-	}
 	if len(f.toolCallsFromStream) > 0 {
 		return "tool_calls"
 	}
+
+	// If we received a stop signal (usage or context_usage event), finish with "stop"
+	if f.receivedStopSignal {
+		return "stop"
+	}
+
+	// If we have content but no stop signal, it was truncated
+	if len(f.fullContent) > 0 {
+		return "length"
+	}
+
 	return "stop"
 }
 
 // calculateUsage calculates the token usage for the response.
-// Uses completion_tokens from tiktoken and calculates prompt_tokens from context_usage if available.
 func (f *Formatter) calculateUsage() map[string]any {
 	promptTokens := 0
-	totalTokens := f.completionTokens
 
 	// If we have context_usage_percentage, use it to calculate prompt_tokens
-	// Formula: prompt_tokens = round(total_context × context_usage_percentage) - completion_tokens
-	// where total_context is the max input tokens (default 200000 per spec)
 	if f.contextUsagePercentage > 0 {
-		// Use a reasonable default for max input tokens
 		const defaultMaxInputTokens = 200000
 		totalContextUsed := int(float64(defaultMaxInputTokens) * f.contextUsagePercentage)
 		promptTokens = totalContextUsed - f.completionTokens
 		if promptTokens < 0 {
 			promptTokens = 0
 		}
-		totalTokens = promptTokens + f.completionTokens
+	} else if f.requestMessages != nil {
+		// Fallback: count tokens from request_messages and request_tools
+		// This matches upstream's count_message_tokens + count_tools_tokens behavior
+		promptTokens = f.countRequestTokens()
 	}
 
 	usage := map[string]any{
 		"prompt_tokens":     promptTokens,
 		"completion_tokens": f.completionTokens,
-		"total_tokens":      totalTokens,
+		"total_tokens":      promptTokens + f.completionTokens,
 	}
 
-	// Add metering data if available
-	if f.meteringData != nil {
-		// metering_data from usage event
-		usage["prompt_tokens"] = f.meteringData.Input
-		usage["completion_tokens"] = f.meteringData.Output
-		usage["total_tokens"] = f.meteringData.Input + f.meteringData.Output
-	}
-
-	// Add credits_used (metering data) if available
-	if f.meteringDataRaw != nil {
-		usage["credits_used"] = f.meteringDataRaw
+	// Add credits_used if we have it
+	if f.creditsUsed > 0 {
+		usage["credits_used"] = f.creditsUsed
 	}
 
 	return usage
+}
+
+// countRequestTokens estimates prompt tokens by tokenizing the request messages and tools.
+// This is a simplified approximation matching upstream's behavior when context_usage is not available.
+func (f *Formatter) countRequestTokens() int {
+	count := 0
+
+	// Count tokens from messages
+	if f.requestMessages != nil {
+		for _, msg := range f.requestMessages {
+			// Count role: "assistant", "user", etc.
+			if role, ok := msg["role"]; ok {
+				if s, isStr := role.(string); isStr {
+					count += len(tokenizer.EncodeOrdinary(s))
+				}
+			}
+
+			// Count content
+			if content, ok := msg["content"]; ok {
+				switch c := content.(type) {
+				case string:
+					count += len(tokenizer.EncodeOrdinary(c))
+				default:
+					// Content blocks or other structures
+					if b, err := json.Marshal(c); err == nil {
+						count += len(tokenizer.EncodeOrdinary(string(b)))
+					}
+				}
+			}
+		}
+	}
+
+	// Count tokens from tools
+	if f.requestTools != nil {
+		if b, err := json.Marshal(f.requestTools); err == nil {
+			count += len(tokenizer.EncodeOrdinary(string(b)))
+		}
+	}
+
+	return count
 }
