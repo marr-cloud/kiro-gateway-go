@@ -6,6 +6,7 @@ package accountmanager
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -19,6 +20,7 @@ import (
 type Manager struct {
 	cfg          *config.Config
 	accounts     []*Account
+	stickyIdx    int // Current sticky account index for load balancing
 	mu           sync.RWMutex
 	stateFile    string
 	saveInterval time.Duration
@@ -29,6 +31,14 @@ type Manager struct {
 
 	// lastSaved es el último estado guardado, para detectar cambios dirty.
 	lastSaved map[string]AccountStats
+
+	// clock es la función para obtener la hora actual.
+	// Inyectable para tests. Por defecto es time.Now.
+	clock func() time.Time
+
+	// randFloat es la función para obtener un número aleatorio en [0, 1).
+	// Inyectable para tests. Por defecto es rand.Float64.
+	randFloat func() float64
 }
 
 // NewManager crea un nuevo Manager.
@@ -56,14 +66,19 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 		saveInterval = 10 * time.Second
 	}
 
-	return &Manager{
+	m := &Manager{
 		cfg:          cfg,
 		accounts:     make([]*Account, 0),
+		stickyIdx:    0,
 		stateFile:    stateFile,
 		saveInterval: saveInterval,
 		renameFn:     os.Rename,
 		lastSaved:    make(map[string]AccountStats),
-	}, nil
+		clock:        time.Now,
+		randFloat:    rand.Float64,
+	}
+
+	return m, nil
 }
 
 // LoadCredentials lee credentials.json y crea todas las cuentas necesarias.
