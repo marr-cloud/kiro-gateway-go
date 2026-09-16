@@ -4,6 +4,8 @@
 package accountmanager
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,8 +13,8 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
 )
 
-// TestStickySelection verifies sticky selection: 3 accounts, 5 successful calls
-// all go to the same account (sticky index never moves without failure).
+// TestStickySelection verifies sticky selection: 3 accounts, 5 successful calls.
+// Sticky points to the last successful account (upstream auth.py:801-804).
 func TestStickySelection(t *testing.T) {
 	m := &Manager{
 		accounts:  make([]*Account, 3),
@@ -31,7 +33,7 @@ func TestStickySelection(t *testing.T) {
 		}
 	}
 
-	// 5 successful calls should all return the same account (sticky index doesn't move)
+	// 5 successful calls on account 0 should keep sticky at 0
 	for i := 0; i < 5; i++ {
 		acc, err := m.GetNextAccount("gpt-4", nil)
 		if err != nil {
@@ -40,16 +42,21 @@ func TestStickySelection(t *testing.T) {
 		if acc.ID != testAccountID(0) {
 			t.Fatalf("Call %d: expected account 0, got %s", i, acc.ID)
 		}
+		// Report success to update sticky
+		m.ReportSuccess(acc.ID, "gpt-4")
 	}
 
-	// Verify sticky index is still 0
+	// Verify sticky index is still 0 (pointing to last successful account)
 	if m.stickyIdx != 0 {
-		t.Fatalf("Expected stickyIdx=0, got %d", m.stickyIdx)
+		t.Fatalf("Expected stickyIdx=0 (pointing to last successful), got %d", m.stickyIdx)
 	}
 }
 
-// TestFailoverOnRecoverableFailure verifies that on a Recoverable failure,
-// the next call goes to the next account.
+// TestFailoverOnRecoverableFailure verifies failover behavior on Recoverable failure.
+// Sticky follows the last successful account, not failures.
+// When account 0 fails, it quarantines but sticky stays at 0.
+// GetNextAccount finds account 1 (quarantined account 0 is skipped).
+// When account 1 succeeds, sticky moves to 1.
 func TestFailoverOnRecoverableFailure(t *testing.T) {
 	m := &Manager{
 		accounts:  make([]*Account, 3),
@@ -67,27 +74,41 @@ func TestFailoverOnRecoverableFailure(t *testing.T) {
 		}
 	}
 
-	// Get first account
+	// Get account 0 (sticky=0)
 	acc1, _ := m.GetNextAccount("gpt-4", nil)
 	if acc1.ID != testAccountID(0) {
 		t.Fatalf("Expected account 0, got %s", acc1.ID)
 	}
+	// Report success to set sticky to 0
+	m.ReportSuccess(testAccountID(0), "gpt-4")
 
-	// Report a Recoverable failure from account 0
+	// Report a Recoverable failure from account 0 (enters quarantine)
 	errType := m.ReportFailure(testAccountID(0), "gpt-4", 429, "rate_limit", "Rate limited")
 	if errType != accounterrors.Recoverable {
 		t.Fatalf("Expected Recoverable, got %s", errType)
 	}
 
-	// Next call should return account 1 (sticky advanced)
-	acc2, _ := m.GetNextAccount("gpt-4", nil)
-	if acc2.ID != testAccountID(1) {
-		t.Fatalf("Expected account 1, got %s", acc2.ID)
+	// Sticky should NOT move on failure (upstream auth.py:864-865)
+	if m.stickyIdx != 0 {
+		t.Fatalf("After failure, stickyIdx should NOT change; expected 0, got %d", m.stickyIdx)
 	}
 
-	// Verify sticky index advanced
+	// Next call: sticky is 0, but account 0 is quarantined, so nextEnabledIdx finds account 1
+	acc2, _ := m.GetNextAccount("gpt-4", nil)
+	if acc2.ID != testAccountID(1) {
+		t.Fatalf("Expected account 1 (acc 0 quarantined), got %s", acc2.ID)
+	}
+
+	// Report success on account 1 → sticky moves to 1
+	m.ReportSuccess(testAccountID(1), "gpt-4")
 	if m.stickyIdx != 1 {
-		t.Fatalf("Expected stickyIdx=1, got %d", m.stickyIdx)
+		t.Fatalf("After success on account 1, expected stickyIdx=1, got %d", m.stickyIdx)
+	}
+
+	// Next call should prefer account 1 (sticky=1)
+	acc3, _ := m.GetNextAccount("gpt-4", nil)
+	if acc3.ID != testAccountID(1) {
+		t.Fatalf("Expected account 1 (sticky=1), got %s", acc3.ID)
 	}
 }
 
@@ -305,6 +326,36 @@ func TestSingleAccountFatal(t *testing.T) {
 	}
 }
 
+// TestSingleAccountExcluded verifies that single-account mode with exclude returns error.
+func TestSingleAccountExcluded(t *testing.T) {
+	m := &Manager{
+		accounts:  make([]*Account, 1),
+		stickyIdx: 0,
+		clock:     time.Now,
+		randFloat: func() float64 { return 0.5 },
+		cfg:       &config.Config{AccountRecoveryTimeout: 60, AccountMaxBackoffMultiplier: 1440, AccountProbabilisticRetryChance: 0.1},
+	}
+
+	m.accounts[0] = &Account{
+		ID:      testAccountID(0),
+		Enabled: true,
+		Stats:   AccountStats{},
+	}
+
+	// Exclude the single account
+	exclude := map[string]struct{}{
+		testAccountID(0): {},
+	}
+	acc, err := m.GetNextAccount("gpt-4", exclude)
+	if acc != nil {
+		t.Fatalf("Expected nil account when single account is excluded")
+	}
+	var exhausted *ExhaustedAccountsError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("Expected ExhaustedAccountsError, got %T: %v", err, err)
+	}
+}
+
 // TestMultiAccountNoAvailable verifies 503 synthesis when all accounts are unavailable.
 func TestMultiAccountNoAvailable(t *testing.T) {
 	m := &Manager{
@@ -336,8 +387,9 @@ func TestMultiAccountNoAvailable(t *testing.T) {
 	if acc != nil {
 		t.Fatalf("Expected nil account when all unavailable")
 	}
-	if err == nil {
-		t.Fatalf("Expected error when all accounts unavailable")
+	var exhausted *ExhaustedAccountsError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("Expected ExhaustedAccountsError, got %T: %v", err, err)
 	}
 }
 
@@ -414,5 +466,5 @@ func TestReportSuccessResetsFailures(t *testing.T) {
 
 // Helper function to generate test account IDs
 func testAccountID(idx int) string {
-	return "account-" + string(rune('0'+idx))
+	return fmt.Sprintf("account-%d", idx)
 }

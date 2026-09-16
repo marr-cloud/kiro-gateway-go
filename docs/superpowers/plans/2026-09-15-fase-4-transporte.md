@@ -472,7 +472,8 @@ escritos de forma descriptiva. Reglas:
 - Produces (métodos sobre `*Manager`):
   ```go
   // GetNextAccount devuelve la siguiente cuenta habilitada, saltando las que están en cuarentena.
-  // El índice sticky sólo avanza si la cuenta actual falla.
+  // El índice sticky global se actualiza en ReportSuccess con el índice de la cuenta que tuvo éxito (upstream auth.py:801-804).
+  // ReportFailure NO lo mueve (auth.py:864-865).
   func (m *Manager) GetNextAccount(model string, exclude map[string]struct{}) (*Account, error)
 
   // ReportSuccess resetea el contador de fallos de la cuenta.

@@ -69,7 +69,7 @@ type Config struct {
 	AccountsConfigFile              string  // ACCOUNTS_CONFIG_FILE
 	AccountsStateFile               string  // ACCOUNTS_STATE_FILE
 	AccountRecoveryTimeout          int     // ACCOUNT_RECOVERY_TIMEOUT
-	AccountMaxBackoffMultiplier     float64 // ACCOUNT_MAX_BACKOFF_MULTIPLIER
+	AccountMaxBackoffMultiplier     int     // ACCOUNT_MAX_BACKOFF_MULTIPLIER
 	AccountProbabilisticRetryChance float64 // ACCOUNT_PROBABILISTIC_RETRY_CHANCE
 	AccountCacheTTL                 int     // ACCOUNT_CACHE_TTL
 	StateSaveIntervalSeconds        int     // STATE_SAVE_INTERVAL_SECONDS
@@ -187,7 +187,7 @@ func Load(opts Options) (*Config, error) {
 		AccountsConfigFile:              getString("ACCOUNTS_CONFIG_FILE", "credentials.json"),
 		AccountsStateFile:               getString("ACCOUNTS_STATE_FILE", "state.json"),
 		AccountRecoveryTimeout:          getInt("ACCOUNT_RECOVERY_TIMEOUT", 60),
-		AccountMaxBackoffMultiplier:     getFloat("ACCOUNT_MAX_BACKOFF_MULTIPLIER", 1440.0),
+		AccountMaxBackoffMultiplier:     getInt("ACCOUNT_MAX_BACKOFF_MULTIPLIER", 1440),
 		AccountProbabilisticRetryChance: getFloat("ACCOUNT_PROBABILISTIC_RETRY_CHANCE", 0.1),
 		AccountCacheTTL:                 getInt("ACCOUNT_CACHE_TTL", 43200),
 		StateSaveIntervalSeconds:        getInt("STATE_SAVE_INTERVAL_SECONDS", 10),

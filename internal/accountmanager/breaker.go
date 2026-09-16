@@ -48,7 +48,7 @@ func (m *Manager) isInQuarantine(a *Account, now time.Time) bool {
 
 	// Compute quarantine window
 	baseTimeout := time.Duration(m.cfg.AccountRecoveryTimeout) * time.Second
-	cap := int(m.cfg.AccountMaxBackoffMultiplier)
+	cap := m.cfg.AccountMaxBackoffMultiplier
 	window := quarantineWindow(a.Stats.ConsecutiveFailures, baseTimeout, cap)
 
 	// Check if still within quarantine window
