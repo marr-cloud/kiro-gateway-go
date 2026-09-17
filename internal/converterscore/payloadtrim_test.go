@@ -149,10 +149,10 @@ func TestTrimPayloadOverThresholdWithTrimming(t *testing.T) {
 	}
 }
 
-// TestTrimPayloadWithAutoTrimDisabled verifica que cuando AutoTrimPayload=false,
-// no se haga trimming. Test scenario 3: payload sobre umbral con
-// AutoTrimPayload=false -> sin cambios.
-func TestTrimPayloadWithAutoTrimDisabled(t *testing.T) {
+// TestAlignmentPersistedInPayload verifica que la alineación a userInputMessage
+// persiste en el payload (CRITICAL FIX: alignment debe mutar el payload real, no
+// solo una variable local).
+func TestAlignmentPersistedInPayload(t *testing.T) {
 	origAutoTrim := AutoTrimPayload
 	origMaxBytes := KiroMaxPayloadBytes
 	defer func() {
@@ -160,9 +160,12 @@ func TestTrimPayloadWithAutoTrimDisabled(t *testing.T) {
 		KiroMaxPayloadBytes = origMaxBytes
 	}()
 
-	AutoTrimPayload = false
-	KiroMaxPayloadBytes = 500 // Límite bajo, pero AutoTrimPayload está desactivado
+	AutoTrimPayload = true
+	KiroMaxPayloadBytes = 500
 
+	// Crear un payload cuyo historial, después del trimming, comienza con una
+	// entrada NO-userInputMessage (solo assistantResponseMessage).
+	// Después del trim y alignment, esa entrada debe ser removida del payload.
 	payload := map[string]any{
 		"conversationState": map[string]any{
 			"chatTriggerType": "MANUAL",
@@ -170,21 +173,33 @@ func TestTrimPayloadWithAutoTrimDisabled(t *testing.T) {
 			"history": []map[string]any{
 				{
 					"userInputMessage": map[string]any{
-						"content": "First message",
+						"content": "Message 1",
 						"modelId": "test",
 						"origin":  "AI_EDITOR",
 					},
 				},
 				{
 					"assistantResponseMessage": map[string]any{
-						"content": "First response",
+						"content": "Response 1",
 					},
 				},
 				{
 					"userInputMessage": map[string]any{
-						"content": "Second message",
+						"content": "Message 2",
 						"modelId": "test",
 						"origin":  "AI_EDITOR",
+					},
+				},
+				{
+					"assistantResponseMessage": map[string]any{
+						"content": "Response 2",
+					},
+				},
+				// Esta entrada no tiene userInputMessage - será left-over después
+				// del trim y debe ser removida por alignment.
+				{
+					"assistantResponseMessage": map[string]any{
+						"content": "Orphaned assistant message",
 					},
 				},
 			},
@@ -198,15 +213,29 @@ func TestTrimPayloadWithAutoTrimDisabled(t *testing.T) {
 		},
 	}
 
-	originalHistoryLen := len(payload["conversationState"].(map[string]any)["history"].([]map[string]any))
-
-	// Trimming should be skipped since AutoTrimPayload is false
+	// Aplicar trimming
 	TrimPayloadToLimit(payload, KiroMaxPayloadBytes)
 
-	finalHistoryLen := len(payload["conversationState"].(map[string]any)["history"].([]map[string]any))
-	if finalHistoryLen != originalHistoryLen {
-		t.Errorf("expected no trimming when AutoTrimPayload=false, but entries went from %d to %d",
-			originalHistoryLen, finalHistoryLen)
+	// Obtener el historial final del payload
+	conversationState := payload["conversationState"].(map[string]any)
+	historyRaw, hasHistory := conversationState["history"]
+	if !hasHistory {
+		// Si la historia fue eliminada (porque quedó vacía), eso está bien
+		return
+	}
+
+	finalHistory, ok := historyRaw.([]map[string]any)
+	if !ok {
+		t.Fatalf("history has wrong type: %T", historyRaw)
+	}
+
+	// CRITICAL: Verificar que el primer entry tiene userInputMessage
+	// (i.e., la alineación fue aplicada y persiste en el payload)
+	if len(finalHistory) > 0 {
+		if _, hasUserInputMessage := finalHistory[0]["userInputMessage"]; !hasUserInputMessage {
+			t.Errorf("CRITICAL: alignment failed - first history entry does not have userInputMessage. "+
+				"This proves alignment was not persisted in the payload. Entry: %v", finalHistory[0])
+		}
 	}
 }
 

@@ -54,8 +54,11 @@ func stripEmptyToolUses(history []map[string]any) {
 // alignToUserMessage asegura que el historial comienza con una entrada
 // userInputMessage, removiendo entradas del frente que no lo sean.
 //
-// Port de payload_guards.py:59-63. Muta el history in-place.
-func alignToUserMessage(history []map[string]any) {
+// Port de payload_guards.py:59-63. Devuelve el slice alineado.
+// NOTA: en Go, slices se pasan por valor, así que la reasignación debe
+// ser devuelta para que el cambio sea visible al llamador (a diferencia
+// de Python, donde list.pop(0) muta in-place).
+func alignToUserMessage(history []map[string]any) []map[string]any {
 	for len(history) > 0 {
 		if _, ok := history[0]["userInputMessage"]; !ok {
 			history = history[1:]
@@ -63,6 +66,7 @@ func alignToUserMessage(history []map[string]any) {
 			break
 		}
 	}
+	return history
 }
 
 // repairOrphanedToolResults elimina toolResults huérfanos (cuyo toolUseId no
@@ -158,19 +162,12 @@ func repairOrphanedToolResults(history []map[string]any) {
 // reparan los toolResults huérfanos.
 //
 // Port de payload_guards.py:121-164. PERO: en lugar de retornar PayloadTrimStats,
-// solo muta el payload in-place. La decisión de si trimear está fuera (gateada
-// por AutoTrimPayload en BuildKiroPayload).
+// solo muta el payload in-place.
 //
 // Muta el payload in-place, modificando payload["conversationState"]["history"]
-// directamente.
+// directamente. La decisión de si trimear está gateada por AutoTrimPayload en
+// el llamador (BuildKiroPayload).
 func TrimPayloadToLimit(payload map[string]any, maxBytes int) {
-	// NOTA: en BuildKiroPayload, esto se llama dentro de `if AutoTrimPayload { ... }`
-	// así que ya sabemos que AutoTrimPayload es true. Si por algún motivo se llama
-	// fuera de ese contexto, simplemente devolvemos sin hacer nada.
-	if !AutoTrimPayload {
-		return
-	}
-
 	conversationState, ok := payload["conversationState"].(map[string]any)
 	if !ok {
 		return
@@ -195,17 +192,18 @@ func TrimPayloadToLimit(payload map[string]any, maxBytes int) {
 		}
 	}
 
-	// Actualizar la referencia en el payload después de posibles removals
+	// Paso 3: Alinear al inicio de userInputMessage
+	// NOTA: alignToUserMessage devuelve el slice alineado; debe ser asignado
+	// para que el cambio sea visible al payload (Go pasa slices por valor).
+	history = alignToUserMessage(history)
+
+	// Paso 4: Reparar toolResults huérfanos
+	repairOrphanedToolResults(history)
+
+	// Paso 5: Escribir el histórico final (completamente procesado) en el payload
 	if len(history) > 0 {
 		conversationState["history"] = history
 	} else {
 		delete(conversationState, "history")
-		return
 	}
-
-	// Paso 3: Alinear al inicio de userInputMessage
-	alignToUserMessage(history)
-
-	// Paso 4: Reparar toolResults huérfanos
-	repairOrphanedToolResults(history)
 }
