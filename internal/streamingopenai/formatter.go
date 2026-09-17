@@ -8,6 +8,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/marr-cloud/kiro-gateway-go/internal/parsers"
 	"github.com/marr-cloud/kiro-gateway-go/internal/sse"
 	"github.com/marr-cloud/kiro-gateway-go/internal/streamingcore"
 	"github.com/marr-cloud/kiro-gateway-go/internal/tokenizer"
@@ -110,9 +111,22 @@ func (f *Formatter) Handle(ev streamingcore.KiroEvent, w io.Writer) error {
 // Finish completes the stream by emitting any pending tool calls, the final chunk with usage,
 // and the [DONE] marker.
 func (f *Formatter) Finish(w io.Writer) error {
-	// Emit tool calls if any were collected
-	if len(f.toolCallsFromStream) > 0 {
-		if err := f.emitToolCallsChunk(f.toolCallsFromStream, w); err != nil {
+	// Bracket-style tool calls ("[Called fn with args: {...}]") detected
+	// post-loop in the accumulated content, merged with the stream's tool
+	// calls and deduplicated (streaming_openai.py:276-279). NOTE: the OpenAI
+	// upstream applies deduplicate_tool_calls here; the streaminganthropic
+	// twin does NOT (its upstream has no dedup step), so the two dialects
+	// legitimately differ on this line. dedup runs unconditionally, matching
+	// upstream, even when there are no bracket calls.
+	bracketCalls := parsers.ParseBracketToolCalls(f.fullContent)
+	merged := make([]map[string]any, 0, len(f.toolCallsFromStream)+len(bracketCalls))
+	merged = append(merged, f.toolCallsFromStream...)
+	merged = append(merged, bracketCalls...)
+	allToolCalls := parsers.DeduplicateToolCalls(merged)
+
+	// Emit tool calls if any (stream + bracket, deduplicated)
+	if len(allToolCalls) > 0 {
+		if err := f.emitToolCallsChunk(allToolCalls, w); err != nil {
 			return err
 		}
 	}
@@ -125,13 +139,13 @@ func (f *Formatter) Finish(w io.Writer) error {
 	// stream_completed_normally = received_usage or received_context_usage
 	// (streaming_openai.py:272-274).
 	streamCompletedNormally := len(f.creditsUsedRaw) > 0 || f.receivedContextUsage
-	contentTruncated := !streamCompletedNormally && len(f.fullContent) > 0 && len(f.toolCallsFromStream) == 0
+	contentTruncated := !streamCompletedNormally && len(f.fullContent) > 0 && len(allToolCalls) == 0
 
 	var finishReason string
 	switch {
 	case contentTruncated:
 		finishReason = "length"
-	case len(f.toolCallsFromStream) > 0:
+	case len(allToolCalls) > 0:
 		finishReason = "tool_calls"
 	default:
 		finishReason = "stop"
