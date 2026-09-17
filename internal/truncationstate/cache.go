@@ -80,3 +80,9 @@ func hashContentKey(content string) string {
 	digest := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(digest[:])[:16]
 }
+
+// ComputeContentHash computes and returns the SHA256 hash of the first 500 characters
+// of content, for logging or external reference. Exposed for Task 8b (SAVE side).
+func ComputeContentHash(content string) string {
+	return hashContentKey(content)
+}

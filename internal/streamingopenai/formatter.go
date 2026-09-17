@@ -43,6 +43,18 @@ type Formatter struct {
 	receivedContextUsage   bool              // upstream `received_context_usage`: a context_usage event arrived (streaming_core.py calculate loop)
 	requestMessages        []json.RawMessage // request_messages fallback (streaming_openai.py:317-320)
 	requestTools           []json.RawMessage // request_tools fallback (streaming_openai.py:319-320)
+
+	// truncatedTools collects tool calls flagged with truncation during streaming,
+	// populated as a side-channel when processing "tool_use" events (Task 8b).
+	// Each entry: {ID, Name, TruncationInfo}
+	truncatedTools []truncatedToolRecord
+}
+
+// truncatedToolRecord represents a single truncated tool call collected during streaming.
+type truncatedToolRecord struct {
+	ID             string
+	Name           string
+	TruncationInfo map[string]any
 }
 
 // New creates a new Formatter for the given model.
@@ -90,6 +102,16 @@ func (f *Formatter) Handle(ev streamingcore.KiroEvent, w io.Writer) error {
 		if ev.ToolUse != nil {
 			toolCall := f.toolUseToOpenAI(ev.ToolUse)
 			f.toolCallsFromStream = append(f.toolCallsFromStream, toolCall)
+
+			// Collect truncated tool calls as a side-channel (Task 8b: SAVE side).
+			// No SSE bytes are affected; this is purely internal state accumulation.
+			if ev.ToolUse.TruncationDetected {
+				f.truncatedTools = append(f.truncatedTools, truncatedToolRecord{
+					ID:             ev.ToolUse.ID,
+					Name:           ev.ToolUse.Name,
+					TruncationInfo: ev.ToolUse.TruncationInfo,
+				})
+			}
 		}
 
 	case "usage":
@@ -367,4 +389,28 @@ func (f *Formatter) calculateTokens(completionTokens int) (promptTokens, totalTo
 	}
 
 	return 0, completionTokens
+}
+
+// TruncatedTools devuelve la lista de tool calls que fueron truncados durante
+// el stream, recolectados como un side-channel en Handle (Task 8b).
+// Cada entrada contiene {ID, Name, TruncationInfo}. Espeja
+// streaming_openai.py:366-383 (truncated_tools collection).
+func (f *Formatter) TruncatedTools() []truncatedToolRecord {
+	return f.truncatedTools
+}
+
+// FullContent devuelve el contenido completo acumulado durante el stream.
+// Solo text content, no thinking (streaming_openai.py:304-305).
+func (f *Formatter) FullContent() string {
+	return f.fullContent
+}
+
+// ContentWasTruncated retorna true si la respuesta fue truncada por tamaño.
+// Espeja la lógica de streaming_openai.py:271-274:
+// stream_completed_normally = received_usage or received_context_usage
+// content_truncated = not stream_completed_normally and len(full_content) > 0
+// and len(tool_calls) == 0.
+func (f *Formatter) ContentWasTruncated() bool {
+	streamCompletedNormally := len(f.creditsUsedRaw) > 0 || f.receivedContextUsage
+	return !streamCompletedNormally && len(f.fullContent) > 0 && len(f.toolCallsFromStream) == 0
 }

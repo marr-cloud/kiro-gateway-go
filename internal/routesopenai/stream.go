@@ -9,9 +9,12 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsopenai"
 	"github.com/marr-cloud/kiro-gateway-go/internal/streamingcore"
 	"github.com/marr-cloud/kiro-gateway-go/internal/streamingopenai"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationrecovery"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 )
 
 // newPipeline crea el streamingcore.Pipeline con la configuración de
@@ -122,6 +125,9 @@ func drivePipeline(body io.Reader, pipeline *streamingcore.Pipeline, formatter *
 // media_type empieza por "text/". A diferencia de routes_anthropic.py:493
 // (que sí fija Cache-Control/Connection), routes_openai.py NO los fija —
 // deliberadamente fiel al original, sin añadir cabeceras extra.
+// Task 8b (SAVE side): después de cerrar el stream (formatter.Finish),
+// persiste la información de truncación en truncationstate si
+// ShouldInjectRecovery es true (routes_openai.py:266-285).
 func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsopenai.ChatCompletionRequest, resp *http.Response) {
 	defer resp.Body.Close()
 
@@ -136,6 +142,39 @@ func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsopenai.ChatCo
 	// nada útil que responder al cliente en ese punto (la conexión ya se
 	// perdió), así que el error se descarta aquí a propósito.
 	_ = drivePipeline(resp.Body, pipeline, formatter, w, flusher)
+
+	// Task 8b (SAVE side): persist truncation info after stream closes
+	// (routes_openai.py:266-285). The gate is checked here, not in
+	// the formatter, because this is the save side — on the inject side
+	// (truncationinject.go) the gate check is unconditional.
+	if truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled) {
+		// Save each truncated tool call (streaming_openai.py:366-383)
+		for _, truncTool := range formatter.TruncatedTools() {
+			h.truncation.SetTool(truncTool.ID, truncationstate.ToolRecord{
+				ToolName:       truncTool.Name,
+				TruncationInfo: truncTool.TruncationInfo,
+			})
+		}
+
+		// Save content truncation if the stream ended without usage signal
+		// and contained text (streaming_openai.py:271-274,266-285)
+		if formatter.ContentWasTruncated() {
+			h.truncation.SetContent(formatter.FullContent(), truncationstate.ContentRecord{
+				MessageHash: computeMessageHash(formatter.FullContent()),
+			})
+		}
+	}
+}
+
+// computeMessageHash computes the SHA256 hash of the first 500 characters
+// of content, matching internal/truncationstate/cache.go's hashContentKey.
+// This is purely for logging parity with upstream (routes_openai.py:227);
+// the truncationstate.State.SetContent call computes the hash internally.
+func computeMessageHash(content string) string {
+	if len(content) > 500 {
+		content = content[:500]
+	}
+	return truncationstate.ComputeContentHash(content)
 }
 
 // serveNonStreaming atiende el modo no-streaming: acumula los mismos

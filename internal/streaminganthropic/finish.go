@@ -126,6 +126,28 @@ func (f *Formatter) ContextCorrectedInputTokens() (int, bool) {
 	return prompt, true
 }
 
+// TruncatedTools devuelve la lista de tool calls que fueron truncados durante
+// el stream, recolectados como un side-channel en handleToolUse (Task 8b).
+// Cada entrada contiene {ID, Name, TruncationInfo}. Espeja
+// streaming_anthropic.py:470-476 (truncated_tools collection).
+func (f *Formatter) TruncatedTools() []truncatedToolRecord {
+	return f.truncatedTools
+}
+
+// FullContent devuelve el contenido completo acumulado durante el stream.
+// Solo text content, no thinking (streaming_anthropic.py:609-614).
+func (f *Formatter) FullContent() string {
+	return f.fullContent
+}
+
+// ContentWasTruncated retorna true si la respuesta fue truncada por tamaño.
+// Espeja la lógica de streaming_anthropic.py:609-614:
+// content_was_truncated = not received_context_usage and len(full_content) > 0
+// and len(tool_blocks) == 0.
+func (f *Formatter) ContentWasTruncated() bool {
+	return !f.receivedContextUsage && len(f.fullContent) > 0 && f.toolBlockCount == 0
+}
+
 // EmitError writes the error SSE event upstream emits when an exception
 // propagates out of the Kiro stream mid-generation (streaming_anthropic.py:700-712).
 // Callers driving the stream should call this — and then stop, without

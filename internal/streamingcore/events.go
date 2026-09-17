@@ -59,6 +59,16 @@ type ToolUseData struct {
 
 	// Input is the parsed function arguments as a map
 	Input map[string]any
+
+	// TruncationDetected flags whether this tool call was truncated
+	// (set by the parser when arguments could not be fully parsed).
+	// Mirror of parsers.Parser's _truncation_detected.
+	TruncationDetected bool
+
+	// TruncationInfo holds diagnostic data about the truncation
+	// (e.g., size_bytes, reason). Mirror of parsers.Parser's
+	// _truncation_info. Only meaningful when TruncationDetected is true.
+	TruncationInfo map[string]any
 }
 
 // UsageData represents token usage metrics within a KiroEvent.

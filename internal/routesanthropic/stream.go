@@ -9,9 +9,12 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsanthropic"
 	"github.com/marr-cloud/kiro-gateway-go/internal/streaminganthropic"
 	"github.com/marr-cloud/kiro-gateway-go/internal/streamingcore"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationrecovery"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 )
 
 // newPipeline crea el streamingcore.Pipeline con la config de thinking de cfg.
@@ -123,6 +126,9 @@ func drivePipeline(body io.Reader, pipeline *streamingcore.Pipeline, formatter *
 // w. Cabeceras: routes_anthropic.py:489-496 fija media_type
 // "text/event-stream" (Starlette añade "; charset=utf-8") más
 // Cache-Control: no-cache y Connection: keep-alive.
+// Task 8b (SAVE side): después de cerrar el stream (formatter.Finish),
+// persiste la información de truncación en truncationstate si
+// ShouldInjectRecovery es true (routes_anthropic.py:665-687).
 func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsanthropic.AnthropicMessagesRequest, resp *http.Response) {
 	defer resp.Body.Close()
 
@@ -138,6 +144,40 @@ func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsanthropic.Ant
 	// de handler.go): la conexión ya está arrancada y el fallo probable es la
 	// desconexión del cliente.
 	_ = drivePipeline(resp.Body, pipeline, formatter, w, flusher)
+
+	// Task 8b (SAVE side): persist truncation info after stream closes
+	// (streaming_anthropic.py:665-687). The gate is checked here, not in
+	// the formatter, because this is the save side — on the inject side
+	// (truncationinject.go) the gate check is unconditional
+	// (routes_anthropic.py:156-244 doesn't call should_inject_recovery()).
+	if truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled) {
+		// Save each truncated tool call (streaming_anthropic.py:467-472)
+		for _, truncTool := range formatter.TruncatedTools() {
+			h.truncation.SetTool(truncTool.ID, truncationstate.ToolRecord{
+				ToolName:       truncTool.Name,
+				TruncationInfo: truncTool.TruncationInfo,
+			})
+		}
+
+		// Save content truncation if the stream ended without context_usage
+		// signal and contained text (streaming_anthropic.py:609-614,673-687)
+		if formatter.ContentWasTruncated() {
+			h.truncation.SetContent(formatter.FullContent(), truncationstate.ContentRecord{
+				MessageHash: computeMessageHash(formatter.FullContent()),
+			})
+		}
+	}
+}
+
+// computeMessageHash computes the SHA256 hash of the first 500 characters
+// of content, matching internal/truncationstate/cache.go's hashContentKey.
+// This is purely for logging parity with upstream (routes_anthropic.py:242);
+// the truncationstate.State.SetContent call computes the hash internally.
+func computeMessageHash(content string) string {
+	if len(content) > 500 {
+		content = content[:500]
+	}
+	return truncationstate.ComputeContentHash(content)
 }
 
 // serveNonStreaming atiende el modo no-streaming: acumula los mismos eventos

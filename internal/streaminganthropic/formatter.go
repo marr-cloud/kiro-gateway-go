@@ -61,6 +61,18 @@ type Formatter struct {
 	requestMessages []json.RawMessage
 	requestTools    []json.RawMessage
 	requestSystem   json.RawMessage
+
+	// truncatedTools collects tool calls flagged with truncation during streaming,
+	// populated as a side-channel in handleToolUse (Task 8b).
+	// Each entry: {ID, Name, TruncationInfo}
+	truncatedTools []truncatedToolRecord
+}
+
+// truncatedToolRecord represents a single truncated tool call collected during streaming.
+type truncatedToolRecord struct {
+	ID             string
+	Name           string
+	TruncationInfo map[string]any
 }
 
 // New creates a new Formatter for the given model. thinkingHandling
@@ -240,6 +252,8 @@ func (f *Formatter) handleThinking(thinkingContent string, w io.Writer) error {
 // never a tool_use event named "web_search" — see docs/MAPPING.md's task-8
 // ruling). Every tool_use KiroEvent is therefore treated as a normal
 // Anthropic tool_use block.
+// When the tool call is flagged as truncated (Task 8b), collects it in
+// truncatedTools for later persistence via the save hook.
 func (f *Formatter) handleToolUse(tu *streamingcore.ToolUseData, w io.Writer) error {
 	if idx, closed := f.blocks.CloseThinking(); closed {
 		if err := f.emitBlockStop(idx, w); err != nil {
@@ -259,6 +273,16 @@ func (f *Formatter) handleToolUse(tu *streamingcore.ToolUseData, w io.Writer) er
 	toolInput := tu.Input
 	if toolInput == nil {
 		toolInput = map[string]any{}
+	}
+
+	// Collect truncated tool calls as a side-channel (Task 8b: SAVE side).
+	// No SSE bytes are affected; this is purely internal state accumulation.
+	if tu.TruncationDetected {
+		f.truncatedTools = append(f.truncatedTools, truncatedToolRecord{
+			ID:             toolID,
+			Name:           tu.Name,
+			TruncationInfo: tu.TruncationInfo,
+		})
 	}
 
 	return f.emitToolUseBlock(toolID, tu.Name, toolInput, w)

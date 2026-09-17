@@ -222,7 +222,9 @@ func extractUsageData(usageMap map[string]any) *UsageData {
 //	  "function": {
 //	    "name": string,
 //	    "arguments": string (JSON formatted)
-//	  }
+//	  },
+//	  "_truncation_detected": bool (optional, set by parser when truncated),
+//	  "_truncation_info": map[string]any (optional, diagnostic data)
 //	}
 func extractToolUseData(toolCallValue map[string]any) *ToolUseData {
 	// Extract id
@@ -250,9 +252,21 @@ func extractToolUseData(toolCallValue map[string]any) *ToolUseData {
 		input = make(map[string]any)
 	}
 
+	// Extract truncation information (internal/parsers/toolcalls.go:177-182)
+	truncationDetected := false
+	var truncationInfo map[string]any
+	if detected, ok := toolCallValue["_truncation_detected"].(bool); ok && detected {
+		truncationDetected = true
+		if info, ok := toolCallValue["_truncation_info"].(map[string]any); ok {
+			truncationInfo = info
+		}
+	}
+
 	return &ToolUseData{
-		ID:    id,
-		Name:  name,
-		Input: input,
+		ID:                 id,
+		Name:               name,
+		Input:              input,
+		TruncationDetected: truncationDetected,
+		TruncationInfo:     truncationInfo,
 	}
 }
