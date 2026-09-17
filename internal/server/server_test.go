@@ -266,6 +266,39 @@ func TestMessages_Auth(t *testing.T) {
 	}
 }
 
+// TestMessages_EmptyConfiguredKey_NoHeader_Returns401 es la regresión del
+// bypass de auth encontrado en la review de Task 11: con PROXY_API_KEY vacío
+// (mala config plausible del operador, p.ej. `PROXY_API_KEY=` en .env), una
+// petición SIN cabecera x-api-key NO debe autenticarse. Antes del fix,
+// Header.Get("x-api-key")=="" (cabecera ausente) coincidía con la key vacía y
+// dejaba pasar; el guard `key != ""` de validAnthropicAuth lo rechaza,
+// replicando el `if x_api_key and ...` de verify_anthropic_api_key
+// (routes_anthropic.py:94-96). El handler se sustituye por un stub 200: si el
+// auth (erróneamente) pasara, el test vería 200 en vez del 401 esperado.
+func TestMessages_EmptyConfiguredKey_NoHeader_Returns401(t *testing.T) {
+	cfg := testConfig()
+	cfg.ProxyAPIKey = ""
+	manager := newTestManager(t)
+	client, err := httpclient.New(cfg)
+	if err != nil {
+		t.Fatalf("httpclient.New: %v", err)
+	}
+	s := New(cfg, manager, client)
+	s.startedAt = time.Now()
+	s.anthropicMessages = func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK) // si auth pasara (bug), veríamos esto
+	}
+
+	rec := doRequest(s, http.MethodPost, "/v1/messages", nil, []byte(`{}`))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("empty PROXY_API_KEY + no x-api-key: status = %d, want 401 (sin bypass de auth); body=%s", rec.Code, rec.Body.String())
+	}
+	body := decodeJSON(t, rec)
+	if body["type"] != "error" {
+		t.Errorf("expected Anthropic error envelope, got %s", rec.Body.String())
+	}
+}
+
 // --- Panic recovery: 500 en el dialecto correcto según el path ---
 
 func TestPanicRecovery_OpenAIDialect(t *testing.T) {

@@ -105,8 +105,17 @@ func validBearer(r *http.Request, apiKey string) bool {
 
 // validAnthropicAuth replica verify_anthropic_api_key (routes_anthropic.py:73-112):
 // x-api-key primero, Authorization: Bearer como fallback.
+//
+// El guard `key != ""` en la rama x-api-key replica el chequeo de truthiness
+// del original (`if x_api_key and x_api_key == PROXY_API_KEY`,
+// routes_anthropic.py:94-96): sin él, una config con PROXY_API_KEY vacío (una
+// mala configuración plausible del operador: `PROXY_API_KEY=` en .env) dejaría
+// pasar una petición SIN cabecera x-api-key, porque `Header.Get` devuelve "" y
+// "" == "" sería true. validBearer no necesita el guard: compara contra el
+// literal no vacío "Bearer "+apiKey, así que una cabecera ausente ("") nunca
+// coincide aunque apiKey sea "".
 func validAnthropicAuth(r *http.Request, apiKey string) bool {
-	if r.Header.Get("x-api-key") == apiKey {
+	if key := r.Header.Get("x-api-key"); key != "" && key == apiKey {
 		return true
 	}
 	return r.Header.Get("Authorization") == "Bearer "+apiKey
