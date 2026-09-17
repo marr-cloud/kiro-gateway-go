@@ -52,11 +52,18 @@ type ModelResolver struct {
 // hiddenFromList nil se tratan como vacíos, igual que los `Optional[...] =
 // None` del original que caen a `{}`/`set()`.
 func NewModelResolver(c *cache.ModelInfoCache, hiddenModels, aliases map[string]string, hiddenFromList []string) *ModelResolver {
-	if hiddenModels == nil {
-		hiddenModels = map[string]string{}
+	// Copia defensiva de los mapas del llamador: los catálogos que se pasan
+	// aquí suelen ser los `var` de paquete (Aliases, etc.), y guardarlos por
+	// referencia dejaría que una mutación posterior de esos globales alterase
+	// resolvers ya construidos. Rangear un mapa nil da 0 iteraciones, así que
+	// no hace falta el chequeo de nil.
+	hiddenCopy := make(map[string]string, len(hiddenModels))
+	for k, v := range hiddenModels {
+		hiddenCopy[k] = v
 	}
-	if aliases == nil {
-		aliases = map[string]string{}
+	aliasCopy := make(map[string]string, len(aliases))
+	for k, v := range aliases {
+		aliasCopy[k] = v
 	}
 	hiddenSet := make(map[string]struct{}, len(hiddenFromList))
 	for _, id := range hiddenFromList {
@@ -64,8 +71,8 @@ func NewModelResolver(c *cache.ModelInfoCache, hiddenModels, aliases map[string]
 	}
 	return &ModelResolver{
 		cache:          c,
-		hiddenModels:   hiddenModels,
-		aliases:        aliases,
+		hiddenModels:   hiddenCopy,
+		aliases:        aliasCopy,
 		hiddenFromList: hiddenSet,
 	}
 }

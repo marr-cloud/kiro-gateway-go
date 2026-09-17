@@ -24,7 +24,7 @@ import (
 // verificados contra corpus en internal/convertersanthropic y
 // internal/convertersopenai (duplicación temporal documentada en
 // docs/MAPPING.md, "Duplicación temporal: model_resolver.py") — aquí se
-// verifican de nuevo, independientemente, contra los 55 casos de
+// verifican de nuevo, independientemente, contra los 40 casos de
 // testdata/model_resolver/normalize_model_name.
 var (
 	// contextWindowSuffixPattern quita el sufijo de ventana de contexto

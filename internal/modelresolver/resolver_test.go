@@ -12,7 +12,7 @@ import (
 )
 
 // ==================================================================================================
-// NormalizeModelName — corpus (testdata/model_resolver/normalize_model_name, 55 casos)
+// NormalizeModelName — corpus (testdata/model_resolver/normalize_model_name, 40 casos)
 // ==================================================================================================
 
 func TestNormalizeModelNameAgainstCorpus(t *testing.T) {
@@ -35,6 +35,27 @@ func TestNormalizeModelNameAgainstCorpus(t *testing.T) {
 				t.Fatalf("case %s: NormalizeModelName(%q) = %q, want %q", c.Name, input, got, want)
 			}
 		})
+	}
+}
+
+// TestNormalizeModelNameWindowAndDateRules cubre dos reglas de normalización
+// que el brief (§6.12) exige explícitamente pero que el corpus de 40 casos NO
+// ejercita (ninguno contiene `[` ni el patrón punto+fecha): el stripping de
+// sufijos de ventana (`[1m]`/`[200k]`) y el patrón dotWithDateModelPattern
+// (normalize.go, model_resolver.py:170). Las salidas esperadas se verificaron
+// contra el Python real en la review de Task 2.
+func TestNormalizeModelNameWindowAndDateRules(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"claude-sonnet-4-5[1m]", "claude-sonnet-4.5"},
+		{"claude-opus-4-5[200k]", "claude-opus-4.5"},
+		{"claude-3.7-sonnet-20250219", "claude-3.7-sonnet"},
+	}
+	for _, c := range cases {
+		if got := NormalizeModelName(c.in); got != c.want {
+			t.Errorf("NormalizeModelName(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
 
