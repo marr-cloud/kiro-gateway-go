@@ -62,8 +62,10 @@ import (
 	"time"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
+	"github.com/marr-cloud/kiro-gateway-go/internal/cache"
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
+	"github.com/marr-cloud/kiro-gateway-go/internal/modelresolver"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsopenai"
 	"github.com/marr-cloud/kiro-gateway-go/internal/streamingopenai"
 	"github.com/marr-cloud/kiro-gateway-go/internal/thinkingparser"
@@ -112,7 +114,23 @@ func New(accounts *accountmanager.Manager, client *httpclient.Client, cfg *confi
 // todas las cuentas (accountmanager.Manager.GetAllAvailableModels(), ya
 // ordenada). Port de routes_openai.py:122-157.
 func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
-	ids := h.accounts.GetAllAvailableModels()
+	// Aplica el catálogo del modelresolver (HIDDEN_FROM_LIST + aliases) sobre
+	// la unión de modelos de las cuentas, como get_available_models
+	// (.upstream/kiro/model_resolver.py:370-397): oculta "auto" del listado y
+	// muestra el alias "auto-kiro". Cache efímero poblado con los modelos de
+	// las cuentas — contra el endpoint runtime.*.kiro.dev no hay descubrimiento
+	// dinámico (§6.12), así que la unión de las cuentas ES la lista de modelos
+	// disponibles.
+	accountIDs := h.accounts.GetAllAvailableModels()
+	mc := cache.New(h.cfg.AccountCacheTTL)
+	entries := make([]map[string]any, len(accountIDs))
+	for i, id := range accountIDs {
+		entries[i] = map[string]any{"modelId": id}
+	}
+	mc.Update(entries)
+	resolver := modelresolver.NewModelResolver(mc, modelresolver.HiddenModels, modelresolver.Aliases, modelresolver.HiddenFromList)
+	ids := resolver.GetAvailableModels()
+
 	created := time.Now().Unix()
 
 	data := make([]modelsopenai.OpenAIModel, len(ids))

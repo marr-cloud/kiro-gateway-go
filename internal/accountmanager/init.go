@@ -193,8 +193,11 @@ func (m *Manager) refreshAccountModels(ctx context.Context, accountID string) er
 		models = append([]string(nil), fallbackModels...)
 	}
 
-	// TODO(fase-5): apply HIDDEN_MODELS from spec §6.11 (account_manager.py:548-549)
-	// and config.py:219+ after model_resolver is available.
+	// Nota (fase 6a Task 3): esta cuenta guarda la unión CRUDA de modelos; el
+	// filtrado de §6.11 (HIDDEN_FROM_LIST + aliases MODEL_ALIASES) se aplica
+	// aguas abajo en routesopenai.Models vía modelresolver.GetAvailableModels
+	// (model_resolver.py:370-397), no aquí — GetAllAvailableModels sigue
+	// devolviendo la unión sin filtrar a propósito.
 
 	m.mu.Lock()
 	defer m.mu.Unlock()

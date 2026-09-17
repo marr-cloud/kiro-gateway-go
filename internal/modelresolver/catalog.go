@@ -52,6 +52,15 @@ func fallbackModelIDs() []string {
 	return ids
 }
 
+// HiddenModels es el catálogo de modelos ocultos (§6.12, config.py:219,
+// HIDDEN_MODELS): un mapa display-name→internal-id de modelos que Kiro no
+// devuelve en /ListAvailableModels pero que siguen funcionando y se AÑADEN al
+// listado /v1/models. Vacío por defecto (el único ejemplo del original está
+// comentado). Es la fuente única que sustituye los `HiddenModels` locales
+// duplicados de convertersopenai/convertersanthropic (dedup pendiente, ver
+// ledger fase 6a Task 3).
+var HiddenModels = map[string]string{}
+
 // Aliases es el catálogo de alias de nombre de modelo (§6.12,
 // config.py:249-251, MODEL_ALIASES): nombres personalizados que mapean a
 // IDs de modelo reales. El default de "auto-kiro"->"auto" evita el
