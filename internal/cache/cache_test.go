@@ -4,8 +4,9 @@
 package cache
 
 import (
-	"fmt"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -200,56 +201,97 @@ func TestIsStaleAfterTTLExpires(t *testing.T) {
 	}
 }
 
+// TestGetAllModelIDsReturnsAllKeys verifica que GetAllModelIDs devuelve
+// exactamente los IDs presentes en la cache, incluyendo los añadidos vía
+// AddHiddenModel, sin importar el orden (cache.py:165-172; su único
+// consumidor, model_resolver.py:386, los envuelve en un set).
+func TestGetAllModelIDsReturnsAllKeys(t *testing.T) {
+	c := New(3600)
+	c.Update([]map[string]any{
+		{"modelId": "model-a"},
+		{"modelId": "model-b"},
+	})
+	c.AddHiddenModel("model-c", "INTERNAL_C")
+
+	got := c.GetAllModelIDs()
+	want := []string{"model-a", "model-b", "model-c"}
+
+	sort.Strings(got)
+	if len(got) != len(want) {
+		t.Fatalf("GetAllModelIDs() = %v, want %v (length mismatch)", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("GetAllModelIDs() sorted = %v, want %v", got, want)
+			break
+		}
+	}
+}
+
+// TestGetAllModelIDsEmptyCache verifica que una cache vacía devuelve un
+// slice vacío, no nil-con-panic ni un slice con basura.
+func TestGetAllModelIDsEmptyCache(t *testing.T) {
+	c := New(3600)
+	got := c.GetAllModelIDs()
+	if len(got) != 0 {
+		t.Errorf("GetAllModelIDs() on empty cache = %v, want empty", got)
+	}
+}
+
 // TestConcurrencyTwoPhaseUpdateThenGet ejercita N goroutines llamando Update
-// en la fase 1 y N goroutines llamando Get en la fase 2, secuencialmente
-// (mismo patrón que internal/truncationstate/cache_test.go, ya que este
-// repositorio corre los tests sin -race).
+// en la fase 1 y N goroutines leyendo en la fase 2, secuencialmente (mismo
+// patrón que internal/truncationstate/cache_test.go, ya que este
+// repositorio corre los tests sin -race). Todas las goroutines de la fase 1
+// actualizan el MISMO modelo con el MISMO límite no-default, para que el
+// resultado sea determinista pese a la concurrencia: cualquiera que "gane"
+// la carrera deja el cache en el mismo estado observable.
 func TestConcurrencyTwoPhaseUpdateThenGet(t *testing.T) {
 	c := New(3600)
 	const numGoroutines = 10
+	const modelID = "shared-model"
+	const expectedLimit = 42000
 
 	var wg sync.WaitGroup
 
-	// Fase 1: todas las goroutines llaman Update con su propio modelo.
+	// Fase 1: todas las goroutines actualizan el mismo modelo con el mismo
+	// límite no-default.
 	for g := 0; g < numGoroutines; g++ {
 		wg.Add(1)
-		go func(id int) {
+		go func() {
 			defer wg.Done()
-			modelID := fmt.Sprintf("model_%d", id)
 			c.Update([]map[string]any{
 				{
 					"modelId":     modelID,
-					"tokenLimits": map[string]any{"maxInputTokens": 1000 + id},
+					"tokenLimits": map[string]any{"maxInputTokens": expectedLimit},
 				},
 			})
-		}(g)
+		}()
 	}
 	wg.Wait()
 
-	// Fase 2: todas las goroutines leen. Como Update reemplaza el cache
-	// completo, solo la última Update en completarse (fase 1) sobrevive;
-	// verificamos únicamente que las lecturas concurrentes no corrompen
-	// el estado ni entran en carrera con Get/IsValidModel/GetMaxInputTokens.
-	var successCount int32
-	var mu sync.Mutex
+	// Fase 2: todas las goroutines leen concurrentemente y deben ver
+	// exactamente expectedLimit — nunca el default ni ningún otro valor,
+	// ya que la fase 1 ya terminó y todas escribieron el mismo estado.
+	var mismatches int32
 	for g := 0; g < numGoroutines; g++ {
 		wg.Add(1)
-		go func(id int) {
+		go func() {
 			defer wg.Done()
-			modelID := fmt.Sprintf("model_%d", id)
-			_, _ = c.Get(modelID)
-			_ = c.IsValidModel(modelID)
-			tokens := c.GetMaxInputTokens(modelID)
-			if tokens >= 1000 || tokens == DefaultMaxInputTokens {
-				mu.Lock()
-				successCount++
-				mu.Unlock()
+			if !c.IsValidModel(modelID) {
+				atomic.AddInt32(&mismatches, 1)
+				return
 			}
-		}(g)
+			if got := c.GetMaxInputTokens(modelID); got != expectedLimit {
+				atomic.AddInt32(&mismatches, 1)
+			}
+			if _, ok := c.Get(modelID); !ok {
+				atomic.AddInt32(&mismatches, 1)
+			}
+		}()
 	}
 	wg.Wait()
 
-	if successCount != numGoroutines {
-		t.Errorf("successCount = %d, want %d (every read should resolve to either the surviving model's limit or the default)", successCount, numGoroutines)
+	if mismatches != 0 {
+		t.Errorf("mismatches = %d, want 0 (every concurrent read should see modelID=%q with limit=%d, not the default %d)", mismatches, modelID, expectedLimit, DefaultMaxInputTokens)
 	}
 }

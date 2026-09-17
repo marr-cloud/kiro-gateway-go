@@ -160,6 +160,23 @@ func (c *ModelInfoCache) IsStale() bool {
 	return time.Since(c.lastUpdate) > c.ttl
 }
 
+// GetAllModelIDs devuelve todos los IDs de modelo en la cache. Usado por
+// ModelResolver (Task 2) para construir el catálogo de /v1/models
+// (`model_resolver.py:386`, `set(self.cache.get_all_model_ids())`). Port de
+// cache.py:165-172; el original preserva el orden de inserción del dict
+// (`list(dict.keys())`), pero su único consumidor lo envuelve en un `set`,
+// así que el orden aquí no está garantizado.
+func (c *ModelInfoCache) GetAllModelIDs() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	ids := make([]string, 0, len(c.cache))
+	for id := range c.cache {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // asTruthyInt intenta interpretar v como un entero "truthy" al estilo
 // Python: presente, numérico y distinto de cero. Soporta los tipos
 // numéricos que puede traer un map[string]any poblado a mano o desde JSON
