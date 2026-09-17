@@ -94,6 +94,38 @@ func (f *Formatter) Finish(w io.Writer) error {
 	return writeEvent(w, "message_stop", messageStopData{Type: "message_stop"})
 }
 
+// ContextCorrectedInputTokens devuelve el input_tokens corregido por
+// context_usage para una respuesta NO-streaming, y si la corrección aplica.
+// Espeja el override de collect_anthropic_response (streaming_anthropic.py:809-816):
+// cuando llegó un evento context_usage con porcentaje > 0 (source "subtraction",
+// no "unknown", streaming_core.py:356-362), input = max(0, int(pct/100 *
+// maxInput) - output_tokens); si el porcentaje es 0/ausente (source "unknown")
+// devuelve false y el llamador conserva la estimación pre-petición del
+// message_start.
+//
+// Solo se usa en no-streaming: el SSE streaming fija input_tokens en
+// message_start antes del stream y el protocolo Anthropic no tiene un campo
+// posterior para reenviar el valor corregido (upstream también lo calcula en el
+// generador de streaming, pero ahí es código muerto — nunca se reenvía).
+func (f *Formatter) ContextCorrectedInputTokens() (int, bool) {
+	if f.contextUsagePercentage <= 0 {
+		return 0, false
+	}
+	// TODO(fase-6): max_input_tokens real del modelo vía model resolver/cache
+	// (model_cache.get_max_input_tokens, streaming_core.py:357); 200000 es el
+	// fallback de upstream, el mismo que usa streamingopenai.
+	const maxInputTokens = 200000
+	// output_tokens idéntico al de Finish (count_tokens con corrección Claude,
+	// streaming_anthropic.py:807).
+	outputTokens := tokenizer.CountTokens(f.fullContent+f.fullThinkingContent, true)
+	total := int((f.contextUsagePercentage / 100.0) * float64(maxInputTokens))
+	prompt := total - outputTokens
+	if prompt < 0 {
+		prompt = 0
+	}
+	return prompt, true
+}
+
 // EmitError writes the error SSE event upstream emits when an exception
 // propagates out of the Kiro stream mid-generation (streaming_anthropic.py:700-712).
 // Callers driving the stream should call this — and then stop, without

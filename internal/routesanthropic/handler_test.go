@@ -148,6 +148,15 @@ func TestMessages_NonStreamingSingleJSON(t *testing.T) {
 	if resp.Usage.OutputTokens == 0 {
 		t.Error("usage.output_tokens is 0")
 	}
+	// input_tokens debe venir del override por context_usage (kiroContentBody
+	// manda contextUsagePercentage: 12.5 → 12.5% de 200000 = 25000, menos
+	// output_tokens), NO de la estimación pre-petición del message_start
+	// (streaming_anthropic.py:809-816). Esto es lo que devuelve
+	// collect_anthropic_response en el caso común.
+	wantInput := 25000 - resp.Usage.OutputTokens
+	if resp.Usage.InputTokens != wantInput {
+		t.Errorf("usage.input_tokens = %d, want %d (context-usage override: int(12.5/100*200000) - output_tokens)", resp.Usage.InputTokens, wantInput)
+	}
 }
 
 // --- Escenario 3: failover — cuenta 0 recuperable, cuenta 1 éxito ---

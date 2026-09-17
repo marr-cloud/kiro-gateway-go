@@ -157,5 +157,13 @@ func (h *Handler) serveNonStreaming(w http.ResponseWriter, req *modelsanthropic.
 		return
 	}
 
-	writeJSON(w, http.StatusOK, collectResponse(buf.Bytes(), req.Model))
+	out := collectResponse(buf.Bytes(), req.Model)
+	// Override de input_tokens con el valor derivado de context_usage cuando
+	// Kiro lo reportó (el caso común): collect_anthropic_response usa el número
+	// informado por Kiro, no la estimación pre-petición del message_start
+	// (streaming_anthropic.py:809-816). Solo aplica en no-streaming.
+	if v, ok := formatter.ContextCorrectedInputTokens(); ok {
+		out.Usage.InputTokens = v
+	}
+	writeJSON(w, http.StatusOK, out)
 }

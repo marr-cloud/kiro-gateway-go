@@ -53,7 +53,8 @@ type Formatter struct {
 	fullThinkingContent string
 	toolBlockCount      int // len(tool_blocks): drives stop_reason and truncation detection
 
-	receivedContextUsage     bool // context_usage_percentage is not None (streaming_anthropic.py:527)
+	receivedContextUsage     bool    // context_usage_percentage is not None (streaming_anthropic.py:527)
+	contextUsagePercentage   float64 // último valor visto; alimenta el override de input_tokens no-streaming (streaming_anthropic.py:809-816)
 	cacheReadInputTokens     *int
 	cacheCreationInputTokens *int
 
@@ -150,6 +151,7 @@ func (f *Formatter) Handle(ev streamingcore.KiroEvent, w io.Writer) error {
 		// at all is equivalent to upstream's `is not None` check
 		// (streaming_anthropic.py:521-522,527).
 		f.receivedContextUsage = true
+		f.contextUsagePercentage = ev.ContextUsage
 
 	case "usage":
 		f.mergeCacheUsage(ev.UsageRaw)
