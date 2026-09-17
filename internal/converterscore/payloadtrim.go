@@ -183,13 +183,20 @@ func TrimPayloadToLimit(payload map[string]any, maxBytes int) {
 
 	// Paso 2: Recortar pares desde el frente mientras el tamaño exceda el máximo
 	// (mantener al menos 2 entradas si las hay)
+	//
+	// CRÍTICO: hay que reescribir conversationState["history"] DENTRO del
+	// bucle, en cada iteración. checkPayloadSize(payload) serializa `payload`,
+	// que lee conversationState["history"] DESDE EL MAPA -- pero
+	// `history = history[2:]` solo reasigna la variable local (a diferencia
+	// de Python, donde history.pop(0) muta el mismo objeto lista que referencia
+	// el payload). Si el mapa no se sincroniza aquí, checkPayloadSize sigue
+	// midiendo el payload SIN RECORTAR en cada vuelta, el bucle nunca ve bajar
+	// el tamaño, y termina recortando hasta el piso de 2 entradas aunque con
+	// menos recorte ya hubiera bastado. Mismo bug de clase slice-vs-map que
+	// alignToUserMessage (ver comentario del Paso 3).
 	for len(history) > 2 && checkPayloadSize(payload) > maxBytes {
-		if len(history) >= 2 {
-			// Remover dos entradas (par usuario/asistente)
-			history = history[2:]
-		} else {
-			break
-		}
+		history = history[2:]
+		conversationState["history"] = history
 	}
 
 	// Paso 3: Alinear al inicio de userInputMessage

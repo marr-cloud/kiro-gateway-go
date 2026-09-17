@@ -149,6 +149,62 @@ func TestTrimPayloadOverThresholdWithTrimming(t *testing.T) {
 	}
 }
 
+// TestTrimPayloadStopsAsSoonAsItFits regresiona el bug crítico donde el
+// bucle de recorte por pares medía el payload SIN RECORTAR en cada vuelta
+// (checkPayloadSize lee conversationState["history"] DEL MAPA, pero
+// `history = history[2:]` solo reasignaba la variable local sin escribirla
+// de vuelta al mapa), así que nunca veía bajar el tamaño y terminaba
+// recortando hasta el piso de 2 entradas aunque un solo par ya bastara.
+// 4 pares (8 entradas); tamaños calibrados con checkPayloadSize sobre este
+// mismo contenido: 8 entradas=911B, 6 entradas=732B, 4 entradas=553B,
+// 2 entradas=374B. Con maxBytes=732: 911>732 dispara el recorte; tras quitar
+// un solo par, 732>732 es falso -> el bucle correcto se detiene en 6
+// entradas. El bucle con el bug, al seguir viendo 911 (el mapa sin
+// actualizar), sigue recortando hasta el piso de 2.
+func TestTrimPayloadStopsAsSoonAsItFits(t *testing.T) {
+	history := []map[string]any{}
+	for i := 0; i < 4; i++ {
+		history = append(history,
+			map[string]any{"userInputMessage": map[string]any{
+				"content": "user message padding text 1234", "modelId": "test", "origin": "AI_EDITOR",
+			}},
+			map[string]any{"assistantResponseMessage": map[string]any{
+				"content": "assistant reply padding text 56",
+			}},
+		)
+	}
+	payload := map[string]any{
+		"conversationState": map[string]any{
+			"chatTriggerType": "MANUAL",
+			"conversationId":  "test-id",
+			"history":         history,
+			"currentMessage": map[string]any{
+				"userInputMessage": map[string]any{
+					"content": "Current message", "modelId": "test", "origin": "AI_EDITOR",
+				},
+			},
+		},
+	}
+
+	const maxBytes = 732
+	if originalSize := checkPayloadSize(payload); originalSize <= maxBytes {
+		t.Fatalf("test setup broken: original size %d must exceed maxBytes %d", originalSize, maxBytes)
+	}
+
+	TrimPayloadToLimit(payload, maxBytes)
+
+	// La respuesta correcta remueve exactamente UN par, dejando 6 entradas --
+	// NO recorta hasta el piso de 2.
+	finalHistory := payload["conversationState"].(map[string]any)["history"].([]map[string]any)
+	if len(finalHistory) != 6 {
+		t.Errorf("expected trimming to stop early at 6 history entries (one pair removed), got %d -- "+
+			"loop over-trimmed to the floor because checkPayloadSize() measured the UNTRIMMED map", len(finalHistory))
+	}
+	if finalSize := checkPayloadSize(payload); finalSize > maxBytes {
+		t.Errorf("final payload size %d exceeds maxBytes %d", finalSize, maxBytes)
+	}
+}
+
 // TestAlignmentPersistedInPayload verifica que la alineación a userInputMessage
 // persiste en el payload (CRITICAL FIX: alignment debe mutar el payload real, no
 // solo una variable local).
