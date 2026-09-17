@@ -20,9 +20,11 @@ const truncationToolResultSeparator = "\n\n---\n\nOriginal tool result:\n"
 
 // injectTruncationRecovery implementa el lado READ/inject de la recuperación
 // de truncación (Task 8a), port literal de routes_anthropic.py:156-244. Se
-// llama en Messages (failover.go) ANTES de injectWebSearchTool, gateado por
-// truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled)
-// — el llamador ya comprobó el gate, esta función asume que debe correr.
+// llama en Messages (failover.go) INCONDICIONALMENTE (el original NO llama a
+// should_inject_recovery() en este bucle — ese gate solo existe del lado
+// SAVE, streaming_anthropic.py:666-669, Task 8b; con el gate apagado la
+// cache queda vacía y GetTool/GetContent simplemente no encuentran nada, así
+// que ejecutar esta función siempre es correcto), ANTES de injectWebSearchTool.
 //
 // Recorre req.Messages y produce una lista reemplazada donde:
 //  1. Un mensaje "user" con un bloque tool_result cuyo tool_use_id tiene un

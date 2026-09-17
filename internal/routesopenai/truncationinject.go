@@ -21,10 +21,12 @@ const truncationToolResultSeparator = "\n\n---\n\nOriginal tool result:\n"
 
 // injectTruncationRecovery implementa el lado READ/inject de la recuperación
 // de truncación (Task 8a), port literal de routes_openai.py:185-234. Se
-// llama en ChatCompletions (failover.go) ANTES de injectWebSearchTool, igual
-// que el original (routes_openai.py:185-234 antes de :236-272), gateado por
-// truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled)
-// — el llamador ya comprobó el gate, esta función asume que debe correr.
+// llama en ChatCompletions (failover.go) INCONDICIONALMENTE (el original NO
+// llama a should_inject_recovery() en este bucle — ese gate solo existe del
+// lado SAVE, streaming_openai.py:366-369, Task 8b; con el gate apagado la
+// cache queda vacía y GetTool/GetContent simplemente no encuentran nada, así
+// que ejecutar esta función siempre es correcto), ANTES de injectWebSearchTool,
+// igual que el original (routes_openai.py:185-234 antes de :236-272).
 //
 // Recorre req.Messages y produce una lista reemplazada donde:
 //  1. Un mensaje role="tool" cuyo tool_call_id tiene un

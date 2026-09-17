@@ -11,22 +11,23 @@ import (
 	"testing"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
-	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
 	"github.com/marr-cloud/kiro-gateway-go/internal/truncationrecovery"
 	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 )
 
 // --- Task 8a: inyección de recuperación de truncación (routes_anthropic.py:156-244) ---
-
-// withTruncationRecoveryEnabled fija converterscore.TruncationRecoveryEnabled
-// para la duración del test y lo restaura al terminar — mismo patrón que
-// payload_test.go/thinking_test.go (converterscore).
-func withTruncationRecoveryEnabled(t *testing.T, enabled bool) {
-	t.Helper()
-	orig := converterscore.TruncationRecoveryEnabled
-	converterscore.TruncationRecoveryEnabled = enabled
-	t.Cleanup(func() { converterscore.TruncationRecoveryEnabled = orig })
-}
+//
+// Fix round 1 (revisión post-8a): el lado READ NO lee
+// TruncationRecoveryEnabled/ShouldInjectRecovery — el original
+// (routes_anthropic.py:156-244) llama a get_tool_truncation/
+// get_content_truncation INCONDICIONALMENTE en cada petición; el gate
+// should_inject_recovery() solo existe del lado SAVE
+// (streaming_anthropic.py:666-669, Task 8b). Por eso estos tests NO tocan
+// converterscore.TruncationRecoveryEnabled: la propiedad observable de este
+// paquete en aislamiento es "cache vacía → sin cambios" (Escenario 3), no
+// "flag apagado → sin cambios" — ese último caso end-to-end (flag
+// apagado ⇒ SAVE no guarda nada ⇒ READ de la siguiente petición no
+// encuentra nada) pertenece al test 8a+8b, no a este paquete.
 
 // newMessagesRequestWithToolResult construye una petición /v1/messages cuyo
 // único mensaje user trae un bloque tool_result con el tool_use_id dado.
@@ -79,8 +80,6 @@ func newMessagesRequestWithAssistantText(t *testing.T, assistantText string) *ht
 // --- Escenario 1: tool_result con match en el estado → contenido con aviso PREPENDIDO ---
 
 func TestMessages_TruncationRecovery_InjectsToolResultNotice(t *testing.T) {
-	withTruncationRecoveryEnabled(t, true)
-
 	cfg := testConfig()
 	manager := newTestManager(t, cfg, []string{"tok-only"})
 
@@ -136,8 +135,6 @@ func TestMessages_TruncationRecovery_InjectsToolResultNotice(t *testing.T) {
 // --- Escenario 2: assistant con content truncado → mensaje user sintético inyectado DESPUÉS ---
 
 func TestMessages_TruncationRecovery_InjectsUserNoticeAfterAssistant(t *testing.T) {
-	withTruncationRecoveryEnabled(t, true)
-
 	cfg := testConfig()
 	manager := newTestManager(t, cfg, []string{"tok-only"})
 
@@ -175,11 +172,17 @@ func TestMessages_TruncationRecovery_InjectsUserNoticeAfterAssistant(t *testing.
 	}
 }
 
-// --- Escenario 3: TruncationRecoveryEnabled=false → no hay inyección, aunque haya match ---
-
-func TestMessages_TruncationRecovery_DisabledDoesNotInject(t *testing.T) {
-	withTruncationRecoveryEnabled(t, false)
-
+// --- Escenario 3: cache vacía (sin records guardados) → no hay inyección ---
+//
+// Propiedad honesta del lado READ en aislamiento: injectTruncationRecovery
+// corre siempre (fix round 1, ver el comentario de cabecera de este
+// fichero), pero una cache SIN ningún record para el tool_use_id de la
+// petición simplemente no encuentra nada que inyectar — GetTool devuelve
+// ok=false y el bloque tool_result pasa sin modificar. El efecto real de
+// TRUNCATION_RECOVERY=false (nada se guarda del lado SAVE, así que la
+// SIGUIENTE petición ve exactamente esta misma cache vacía) es una
+// propiedad del gate de Task 8b, no de este paquete.
+func TestMessages_TruncationRecovery_EmptyCacheDoesNotInject(t *testing.T) {
 	cfg := testConfig()
 	manager := newTestManager(t, cfg, []string{"tok-only"})
 
@@ -191,11 +194,7 @@ func TestMessages_TruncationRecovery_DisabledDoesNotInject(t *testing.T) {
 	}))
 	defer server.Close()
 
-	ts := truncationstate.New()
-	ts.SetTool("call_xyz", truncationstate.ToolRecord{
-		ToolName:       "Write",
-		TruncationInfo: map[string]any{"size_bytes": float64(1000), "reason": "test"},
-	})
+	ts := truncationstate.New() // vacía a propósito: ningún SetTool/SetContent previo.
 
 	h := New(manager, mustHTTPClient(t, cfg), cfg, ts)
 	h.apiURL = func(acc *accountmanager.Account) string { return server.URL + "/generateAssistantResponse" }
@@ -207,12 +206,17 @@ func TestMessages_TruncationRecovery_DisabledDoesNotInject(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
-	if strings.Contains(string(gotBody), "[API Limitation]") {
-		t.Errorf("Kiro payload contains the truncation notice with TruncationRecoveryEnabled=false; body=%s", gotBody)
+	// "[API Limitation]" por sí solo NO sirve de marcador: el system prompt
+	// base (converterscore, gateado por su propio TruncationRecoveryEnabled,
+	// Task 7 — sin relación con este fix) SIEMPRE menciona ese tag como
+	// ejemplo ("indicates a tool call result was truncated"). El marcador
+	// inequívoco de una inyección real es la frase completa del contenido
+	// sintético (truncationrecovery.GenerateTruncationToolResult).
+	const syntheticMarker = "Your tool call was truncated by the upstream API due to output size limits"
+	if strings.Contains(string(gotBody), syntheticMarker) {
+		t.Errorf("Kiro payload contains the synthetic truncation notice despite an empty cache; body=%s", gotBody)
 	}
-	// La record NO debe consumirse cuando el gate está apagado (routes_anthropic.py
-	// nunca llama a get_tool_truncation/get_content_truncation si should_inject_recovery() es false).
-	if _, ok := ts.GetTool("call_xyz"); !ok {
-		t.Error("record was consumed even though TruncationRecoveryEnabled=false; ShouldInjectRecovery should gate the whole read")
+	if !strings.Contains(string(gotBody), "original tool output") {
+		t.Errorf("Kiro payload does not contain the original tool_result content unmodified; body=%s", gotBody)
 	}
 }

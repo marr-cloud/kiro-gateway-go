@@ -14,12 +14,10 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/accounterrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/convertersanthropic"
-	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
 	"github.com/marr-cloud/kiro-gateway-go/internal/kiroerrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsanthropic"
 	"github.com/marr-cloud/kiro-gateway-go/internal/networkerrors"
-	"github.com/marr-cloud/kiro-gateway-go/internal/truncationrecovery"
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
 )
 
@@ -41,12 +39,14 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Truncation recovery (Task 8a, lado READ/inject): corre ANTES de
-	// web_search Path B/A, igual que el original (routes_anthropic.py:156-244
-	// antes de :255-310).
-	if truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled) {
-		h.injectTruncationRecovery(&req)
-	}
+	// Truncation recovery (Task 8a, lado READ/inject): corre INCONDICIONALMENTE
+	// (routes_anthropic.py:156-244 no llama a should_inject_recovery() — ese
+	// gate solo existe del lado SAVE, streaming_anthropic.py:666-669, Task 8b;
+	// con el gate apagado la cache queda vacía y GetTool/GetContent
+	// simplemente no encuentran nada, así que una lectura incondicional es
+	// correcta), ANTES de web_search Path B/A, igual que el original
+	// (routes_anthropic.py:156-244 antes de :255-310).
+	h.injectTruncationRecovery(&req)
 
 	h.injectWebSearchTool(&req)
 	if h.handleNativeWebSearch(r.Context(), w, &req) {

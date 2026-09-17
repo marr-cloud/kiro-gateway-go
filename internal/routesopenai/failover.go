@@ -13,13 +13,11 @@ import (
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/accounterrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
-	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
 	"github.com/marr-cloud/kiro-gateway-go/internal/convertersopenai"
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
 	"github.com/marr-cloud/kiro-gateway-go/internal/kiroerrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsopenai"
 	"github.com/marr-cloud/kiro-gateway-go/internal/networkerrors"
-	"github.com/marr-cloud/kiro-gateway-go/internal/truncationrecovery"
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
 )
 
@@ -43,12 +41,14 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Truncation recovery (Task 8a, lado READ/inject): corre ANTES de
-	// web_search Path B, igual que el original (routes_openai.py:185-234
-	// antes de :236-272).
-	if truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled) {
-		h.injectTruncationRecovery(&req)
-	}
+	// Truncation recovery (Task 8a, lado READ/inject): corre INCONDICIONALMENTE
+	// (routes_openai.py:185-234 no llama a should_inject_recovery() — ese
+	// gate solo existe del lado SAVE, streaming_openai.py:366-369, Task 8b;
+	// con el gate apagado la cache queda vacía y GetTool/GetContent
+	// simplemente no encuentran nada, así que una lectura incondicional es
+	// correcta), ANTES de web_search Path B, igual que el original
+	// (routes_openai.py:185-234 antes de :236-272).
+	h.injectTruncationRecovery(&req)
 
 	h.injectWebSearchTool(&req)
 
