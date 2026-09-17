@@ -140,14 +140,22 @@ func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsopenai.ChatCo
 	// La desconexión del cliente (D4, spec §5.4) se detecta por el error
 	// que devuelve w.Write dentro de drivePipeline/formatter.Handle; no hay
 	// nada útil que responder al cliente en ese punto (la conexión ya se
-	// perdió), así que el error se descarta aquí a propósito.
-	_ = drivePipeline(resp.Body, pipeline, formatter, w, flusher)
+	// perdió). El error SÍ se captura (en lugar de descartarse con `_ =`)
+	// porque gatea el bloque de SAVE de abajo: en un fallo real a mitad de
+	// stream, Finish() nunca corre pero formatter.TruncatedTools() ya puede
+	// tener herramientas acumuladas de eventos previos, y guardarlas
+	// persistiría datos parciales que upstream nunca persiste (su generador
+	// sale por GeneratorExit y la sección de guardado -
+	// streaming_openai.py:266-285 - nunca se alcanza en ese camino). Solo se
+	// sigue sin propagar el error al cliente (la respuesta ya está
+	// parcialmente escrita); lo único que cambia es que el SAVE se salta.
+	err := drivePipeline(resp.Body, pipeline, formatter, w, flusher)
 
 	// Task 8b (SAVE side): persist truncation info after stream closes
 	// (routes_openai.py:266-285). The gate is checked here, not in
 	// the formatter, because this is the save side — on the inject side
 	// (truncationinject.go) the gate check is unconditional.
-	if truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled) {
+	if err == nil && truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled) {
 		// Save each truncated tool call (streaming_openai.py:366-383)
 		for _, truncTool := range formatter.TruncatedTools() {
 			h.truncation.SetTool(truncTool.ID, truncationstate.ToolRecord{

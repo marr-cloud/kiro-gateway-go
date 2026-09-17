@@ -142,15 +142,24 @@ func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsanthropic.Ant
 	flusher, _ := w.(http.Flusher)
 	// Error a mitad de stream descartado a propósito (punto 4 de la cabecera
 	// de handler.go): la conexión ya está arrancada y el fallo probable es la
-	// desconexión del cliente.
-	_ = drivePipeline(resp.Body, pipeline, formatter, w, flusher)
+	// desconexión del cliente. El error SÍ se captura (en lugar de
+	// descartarse con `_ =`) porque gatea el bloque de SAVE de abajo: en un
+	// fallo real a mitad de stream (p.ej. w.Write falla porque el cliente se
+	// desconectó), Finish() nunca corre pero formatter.TruncatedTools() ya
+	// puede tener herramientas acumuladas de eventos previos, y guardarlas
+	// persistiría datos parciales que upstream nunca persiste (su generador
+	// sale por GeneratorExit y la sección de guardado -
+	// streaming_anthropic.py:665-687 - nunca se alcanza en ese camino). Solo
+	// se sigue sin propagar el error al cliente (la respuesta ya está
+	// parcialmente escrita); lo único que cambia es que el SAVE se salta.
+	err := drivePipeline(resp.Body, pipeline, formatter, w, flusher)
 
 	// Task 8b (SAVE side): persist truncation info after stream closes
 	// (streaming_anthropic.py:665-687). The gate is checked here, not in
 	// the formatter, because this is the save side — on the inject side
 	// (truncationinject.go) the gate check is unconditional
 	// (routes_anthropic.py:156-244 doesn't call should_inject_recovery()).
-	if truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled) {
+	if err == nil && truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled) {
 		// Save each truncated tool call (streaming_anthropic.py:467-472)
 		for _, truncTool := range formatter.TruncatedTools() {
 			h.truncation.SetTool(truncTool.ID, truncationstate.ToolRecord{
