@@ -29,9 +29,6 @@ type KiroEvent struct {
 	// ToolUse holds tool/function call data (for Kind == "tool_use")
 	ToolUse *ToolUseData
 
-	// Usage holds token usage metrics (for Kind == "usage")
-	Usage *UsageData
-
 	// UsageRaw holds the raw JSON bytes of the usage payload as received
 	// (for Kind == "usage"), preserving key order and original number
 	// formatting (e.g. "1.0" vs "1"). Downstream formatters pass this
@@ -69,19 +66,4 @@ type ToolUseData struct {
 	// (e.g., size_bytes, reason). Mirror of parsers.Parser's
 	// _truncation_info. Only meaningful when TruncationDetected is true.
 	TruncationInfo map[string]any
-}
-
-// UsageData represents token usage metrics within a KiroEvent.
-type UsageData struct {
-	// Input is the number of input tokens
-	Input int
-
-	// Output is the number of output tokens
-	Output int
-
-	// CacheRead is the number of cache read tokens
-	CacheRead int
-
-	// CacheCreation is the number of cache creation tokens
-	CacheCreation int
 }

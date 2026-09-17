@@ -68,17 +68,11 @@ func (p *Pipeline) Feed(chunk []byte) []KiroEvent {
 			}
 
 		case "usage":
-			// Extract usage dict and build UsageData
-			if usageVal, ok := parserEvent.Value["usage"]; ok {
-				if usageMap, ok := usageVal.(map[string]any); ok {
-					usageData := extractUsageData(usageMap)
-					events = append(events, KiroEvent{
-						Kind:     "usage",
-						Usage:    usageData,
-						UsageRaw: extractUsageRaw(parserEvent.Raw),
-					})
-				}
-			}
+			// Emit usage event with raw JSON bytes
+			events = append(events, KiroEvent{
+				Kind:     "usage",
+				UsageRaw: extractUsageRaw(parserEvent.Raw),
+			})
 
 		case "context_usage":
 			// Extract context usage percentage
@@ -176,41 +170,6 @@ func extractUsageRaw(raw []byte) json.RawMessage {
 		return nil
 	}
 	return envelope.Usage
-}
-
-// extractUsageData converts a usage map from the parser into a UsageData struct.
-func extractUsageData(usageMap map[string]any) *UsageData {
-	data := &UsageData{}
-
-	// Extract input tokens
-	if inputVal, ok := usageMap["input_tokens"]; ok {
-		if inputInt, ok := inputVal.(float64); ok {
-			data.Input = int(inputInt)
-		}
-	}
-
-	// Extract output tokens
-	if outputVal, ok := usageMap["output_tokens"]; ok {
-		if outputInt, ok := outputVal.(float64); ok {
-			data.Output = int(outputInt)
-		}
-	}
-
-	// Extract cache read tokens
-	if cacheReadVal, ok := usageMap["cache_read_tokens"]; ok {
-		if cacheReadInt, ok := cacheReadVal.(float64); ok {
-			data.CacheRead = int(cacheReadInt)
-		}
-	}
-
-	// Extract cache creation tokens
-	if cacheCreationVal, ok := usageMap["cache_creation_tokens"]; ok {
-		if cacheCreationInt, ok := cacheCreationVal.(float64); ok {
-			data.CacheCreation = int(cacheCreationInt)
-		}
-	}
-
-	return data
 }
 
 // extractToolUseData converts a tool_call event value into ToolUseData.

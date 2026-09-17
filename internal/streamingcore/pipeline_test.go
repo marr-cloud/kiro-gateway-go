@@ -61,42 +61,6 @@ func TestFeedContentWithThinking(t *testing.T) {
 	}
 }
 
-func TestFeedUsageEvent(t *testing.T) {
-	// Test usage chunk → KiroEvent usage with correct field mapping
-	pipeline := NewPipeline(thinkingparser.HandlingAsReasoningContent, 256)
-
-	usageJSON := []byte(`{"usage":{"input_tokens":10,"output_tokens":20,"cache_read_tokens":5,"cache_creation_tokens":3}}`)
-	events := pipeline.Feed(usageJSON)
-
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
-	}
-
-	if events[0].Kind != "usage" {
-		t.Errorf("expected Kind 'usage', got %q", events[0].Kind)
-	}
-
-	if events[0].Usage == nil {
-		t.Fatalf("expected Usage to be non-nil")
-	}
-
-	if events[0].Usage.Input != 10 {
-		t.Errorf("expected Input 10, got %d", events[0].Usage.Input)
-	}
-
-	if events[0].Usage.Output != 20 {
-		t.Errorf("expected Output 20, got %d", events[0].Usage.Output)
-	}
-
-	if events[0].Usage.CacheRead != 5 {
-		t.Errorf("expected CacheRead 5, got %d", events[0].Usage.CacheRead)
-	}
-
-	if events[0].Usage.CacheCreation != 3 {
-		t.Errorf("expected CacheCreation 3, got %d", events[0].Usage.CacheCreation)
-	}
-}
-
 func TestFeedContextUsageEvent(t *testing.T) {
 	// Test context_usage float → KiroEvent context_usage
 	pipeline := NewPipeline(thinkingparser.HandlingAsReasoningContent, 256)
