@@ -4,6 +4,10 @@
 // Package debuglogger implementa DebugLogger, port de
 // .upstream/kiro/debug_logger.py: logger de depuración por petición con 3
 // modos (off/errors/all). Paquete hoja: config por parámetro, sin os.Getenv.
+//
+// El slog.Handler que captura logs de aplicación por petición (§6.13) vive
+// en handler.go, junto con appLogBuffer (el buffer thread-safe que viaja en
+// context.Context).
 package debuglogger
 
 import (
@@ -14,8 +18,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"sync"
 )
 
@@ -29,7 +31,8 @@ const (
 )
 
 // DebugLogger es el port de DebugLogger (debug_logger.py:45-53), sin el
-// singleton de proceso; mu protege solo los 5 buffers mutables.
+// singleton de proceso; mu protege los 4 buffers de datos y el puntero
+// appLogsBuf (no su contenido — ver appLogBuffer en handler.go).
 type DebugLogger struct {
 	mode Mode
 	dir  string
@@ -39,12 +42,12 @@ type DebugLogger struct {
 	kiroRequestBodyBuf []byte
 	rawChunksBuf       bytes.Buffer
 	modifiedChunksBuf  bytes.Buffer
-	appLogsBuf         *bytes.Buffer
+	appLogsBuf         *appLogBuffer
 }
 
 // New crea un DebugLogger. Port de __init__ (:62-76), sin el singleton __new__.
 func New(mode Mode, dir string) *DebugLogger {
-	return &DebugLogger{mode: mode, dir: dir, appLogsBuf: &bytes.Buffer{}}
+	return &DebugLogger{mode: mode, dir: dir, appLogsBuf: &appLogBuffer{}}
 }
 
 func (d *DebugLogger) isEnabled() bool { // _is_enabled, debug_logger.py:78-80
@@ -230,7 +233,7 @@ func (d *DebugLogger) clearBuffers() {
 	d.kiroRequestBodyBuf = nil
 	d.rawChunksBuf.Reset()
 	d.modifiedChunksBuf.Reset()
-	d.appLogsBuf = &bytes.Buffer{}
+	d.appLogsBuf = &appLogBuffer{}
 }
 
 // clearAppLogsBuffer: _clear_app_logs_buffer (debug_logger.py:94-106), sin
@@ -238,19 +241,20 @@ func (d *DebugLogger) clearBuffers() {
 func (d *DebugLogger) clearAppLogsBuffer() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.appLogsBuf = &bytes.Buffer{}
+	d.appLogsBuf = &appLogBuffer{}
 }
 
 // writeAppLogsToFile: _write_app_logs_to_file (:380-399); traga CUALQUIER
 // error en silencio a propósito ("avoid recursion", comentario original).
 func (d *DebugLogger) writeAppLogsToFile() {
 	d.mu.Lock()
-	var content []byte
-	if d.appLogsBuf != nil {
-		content = append([]byte(nil), d.appLogsBuf.Bytes()...)
-	}
+	buf := d.appLogsBuf
 	d.mu.Unlock()
 
+	var content []byte
+	if buf != nil {
+		content = buf.snapshot()
+	}
 	if len(bytes.TrimSpace(content)) == 0 {
 		return
 	}
@@ -326,72 +330,4 @@ func marshalIndentNoEscape(v any) ([]byte, error) {
 		return nil, err
 	}
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
-}
-
-// logBufferCtxKey: clave de context no exportada bajo la que
-// PrepareNewRequest instala el buffer de logs en curso (§6.13).
-type logBufferCtxKey struct{}
-
-func contextWithLogBuffer(ctx context.Context, buf *bytes.Buffer) context.Context {
-	return context.WithValue(ctx, logBufferCtxKey{}, buf)
-}
-
-func logBufferFromContext(ctx context.Context) (*bytes.Buffer, bool) {
-	buf, ok := ctx.Value(logBufferCtxKey{}).(*bytes.Buffer)
-	return buf, ok && buf != nil
-}
-
-// Handler devuelve un slog.Handler que replica el formato de línea del sink
-// de loguru original (debug_logger.py:121-127), activo solo si ctx lleva
-// el buffer que PrepareNewRequest instaló (por-context, no por-sink-global
-// como el original :113-115, así que peticiones concurrentes no se mezclan):
-//
-//	{YYYY-MM-DD HH:mm:ss.SSS} | {LEVEL:<8} | {origen}:{función}:{línea} | {mensaje}
-func (d *DebugLogger) Handler() slog.Handler {
-	return appLogHandler{}
-}
-
-// appLogHandler: slog.Handler sin estado (el buffer viaja en ctx).
-// WithAttrs/WithGroup son no-ops: loguru solo interpola {message}.
-type appLogHandler struct{}
-
-func (h appLogHandler) Enabled(ctx context.Context, _ slog.Level) bool {
-	_, ok := logBufferFromContext(ctx)
-	return ok
-}
-
-func (h appLogHandler) Handle(ctx context.Context, r slog.Record) error {
-	buf, ok := logBufferFromContext(ctx)
-	if !ok {
-		return nil
-	}
-	origen, función, línea := sourceInfo(r.PC)
-	fmt.Fprintf(buf, "%s | %-8s | %s:%s:%d | %s\n",
-		r.Time.Format("2006-01-02 15:04:05.000"), r.Level.String(),
-		origen, función, línea, r.Message)
-	return nil
-}
-
-func (h appLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
-func (h appLogHandler) WithGroup(name string) slog.Handler       { return h }
-
-// sourceInfo: origen/función/línea del PC, análogo a {name}:{function}:{line}
-// de loguru (:123) — solo la FORMA, no un replay de logs Python.
-func sourceInfo(pc uintptr) (origen, función string, línea int) {
-	if pc == 0 {
-		return "unknown", "unknown", 0
-	}
-	frames := runtime.CallersFrames([]uintptr{pc})
-	frame, _ := frames.Next()
-
-	full := frame.Function
-	if idx := strings.LastIndex(full, "/"); idx >= 0 {
-		full = full[idx+1:]
-	}
-	origen = full
-	if dot := strings.Index(full, "."); dot >= 0 {
-		origen = full[:dot]
-		función = full[dot+1:]
-	}
-	return origen, función, frame.Line
 }

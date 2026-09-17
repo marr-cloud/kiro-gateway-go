@@ -6,11 +6,9 @@ package debuglogger
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -303,81 +301,6 @@ func TestModeAllPrepareNewRequestClearsDirectory(t *testing.T) {
 	// anterior desaparece hasta que se vuelva a loguear algo.
 	d.PrepareNewRequest(context.Background())
 	requireNoFile(t, dir, "request_body.json")
-}
-
-// ==================================================================================================
-// slog.Handler: formato exacto de línea y activación gateada por el buffer
-// instalado en el context (debug_logger.py:108-127, spec §6.13).
-// ==================================================================================================
-
-// TestHandlerFormatsLineExactly verifica, por regex, el formato
-// "{YYYY-MM-DD HH:mm:ss.SSS} | {LEVEL:<8} | {origen}:{función}:{línea} | {mensaje}".
-func TestHandlerFormatsLineExactly(t *testing.T) {
-	dir := t.TempDir()
-	d := New(ModeAll, dir)
-	ctx := d.PrepareNewRequest(context.Background())
-
-	logger := slog.New(d.Handler())
-	logger.InfoContext(ctx, "formatted line test")
-
-	buf, ok := logBufferFromContext(ctx)
-	if !ok {
-		t.Fatalf("no se instaló ningún buffer en el context")
-	}
-	line := buf.String()
-
-	levelField := fmt.Sprintf("%-8s", "INFO")
-	pattern := regexp.MustCompile(
-		`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \| ` +
-			regexp.QuoteMeta(levelField) +
-			` \| [\w.]+:\w+:\d+ \| formatted line test\n$`,
-	)
-	if !pattern.MatchString(line) {
-		t.Errorf("línea de log = %q, no matchea el patrón esperado", line)
-	}
-}
-
-// TestHandlerDisabledOutsideRequestContext verifica que, sin un buffer
-// instalado en el context (fuera de una petición con debug activo), el
-// handler queda deshabilitado — mismo comportamiento que "el sink solo está
-// activo durante el procesamiento de una petición específica"
-// (debug_logger.py:113-115).
-func TestHandlerDisabledOutsideRequestContext(t *testing.T) {
-	dir := t.TempDir()
-	d := New(ModeAll, dir)
-
-	h := d.Handler()
-	if h.Enabled(context.Background(), slog.LevelInfo) {
-		t.Errorf("Handler().Enabled() = true sin buffer en el context, want false")
-	}
-}
-
-// TestHandlerMultipleRequestsDoNotMixBuffers verifica que dos peticiones
-// consecutivas (dos PrepareNewRequest) obtienen buffers de log distintos: el
-// contenido de la primera no se filtra en la segunda.
-func TestHandlerMultipleRequestsDoNotMixBuffers(t *testing.T) {
-	dir := t.TempDir()
-	d := New(ModeAll, dir)
-	logger := slog.New(d.Handler())
-
-	ctx1 := d.PrepareNewRequest(context.Background())
-	logger.InfoContext(ctx1, "first request")
-	d.DiscardBuffers()
-	firstLogs := requireFileBytes(t, dir, "app_logs.txt")
-	if !strings.Contains(string(firstLogs), "first request") {
-		t.Fatalf("app_logs.txt tras la primera petición = %q", firstLogs)
-	}
-
-	ctx2 := d.PrepareNewRequest(context.Background())
-	logger.InfoContext(ctx2, "second request")
-	d.DiscardBuffers()
-	secondLogs := requireFileBytes(t, dir, "app_logs.txt")
-	if strings.Contains(string(secondLogs), "first request") {
-		t.Errorf("app_logs.txt de la segunda petición contiene contenido de la primera: %q", secondLogs)
-	}
-	if !strings.Contains(string(secondLogs), "second request") {
-		t.Errorf("app_logs.txt tras la segunda petición = %q, want que contenga %q", secondLogs, "second request")
-	}
 }
 
 // ==================================================================================================
