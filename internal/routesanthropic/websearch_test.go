@@ -13,6 +13,7 @@ import (
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsanthropic"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 )
 
 // --- Helpers específicos de web_search ---
@@ -171,7 +172,7 @@ func TestMessages_PathA_NoAccounts_Returns503(t *testing.T) {
 	cfg := testConfig()
 	manager := newTestManager(t, cfg, nil)
 
-	h := New(manager, mustHTTPClient(t, cfg), cfg)
+	h := New(manager, mustHTTPClient(t, cfg), cfg, truncationstate.New())
 
 	req := newWebSearchToolsRequest(t, false)
 	rec := httptest.NewRecorder()

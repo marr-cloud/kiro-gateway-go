@@ -13,6 +13,7 @@ import (
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsopenai"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 )
 
 // --- Escenario 1: GET /v1/models con 2 cuentas → union ordenada ---
@@ -25,7 +26,7 @@ func TestModels_TwoAccountsUnionSorted(t *testing.T) {
 	accs[0].Models.Models = []string{"claude-sonnet-4", "model-z"}
 	accs[1].Models.Models = []string{"model-z", "claude-opus-4"}
 
-	h := New(manager, mustHTTPClient(t, cfg), cfg)
+	h := New(manager, mustHTTPClient(t, cfg), cfg, truncationstate.New())
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	rec := httptest.NewRecorder()
@@ -71,7 +72,7 @@ func TestModels_HidesAutoShowsAlias(t *testing.T) {
 	manager := newTestManager(t, cfg, []string{"tok-a"})
 	manager.Accounts()[0].Models.Models = []string{"auto", "claude-sonnet-4"}
 
-	h := New(manager, mustHTTPClient(t, cfg), cfg)
+	h := New(manager, mustHTTPClient(t, cfg), cfg, truncationstate.New())
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	rec := httptest.NewRecorder()
 	h.Models(rec, req)
@@ -366,7 +367,7 @@ func TestChatCompletions_TransportErrorFailsOverAndArmsBreaker(t *testing.T) {
 	unreachableURL := unreachable.URL
 	unreachable.Close()
 
-	h := New(manager, mustHTTPClient(t, cfg), cfg)
+	h := New(manager, mustHTTPClient(t, cfg), cfg, truncationstate.New())
 	h.apiURL = func(acc *accountmanager.Account) string {
 		if acc.ID == badAccountID {
 			return unreachableURL + "/generateAssistantResponse"

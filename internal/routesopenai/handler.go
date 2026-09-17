@@ -69,6 +69,7 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsopenai"
 	"github.com/marr-cloud/kiro-gateway-go/internal/streamingopenai"
 	"github.com/marr-cloud/kiro-gateway-go/internal/thinkingparser"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 )
 
 // modelDescription es la descripción literal que routes_openai.py:152 pone
@@ -80,6 +81,15 @@ type Handler struct {
 	accounts *accountmanager.Manager
 	client   *httpclient.Client
 	cfg      *config.Config
+
+	// truncation es la cache compartida de recuperación de truncación
+	// (Task 8a/8b): la MISMA instancia que routesanthropic.Handler.truncation,
+	// inyectada por internal/server.New (Task 11 fix). El lado SAVE (Task
+	// 8b, tras cerrar un stream truncado) escribe vía SetTool/SetContent; el
+	// lado READ/inject de este paquete (truncationinject.go) lee vía
+	// GetTool/GetContent al recibir la SIGUIENTE petición — ver
+	// routes_openai.py:185-234.
+	truncation *truncationstate.State
 
 	// apiURL construye la URL de destino en Kiro para una cuenta dada. Por
 	// defecto, acc.Auth.APIHost()+"/generateAssistantResponse"
@@ -98,12 +108,17 @@ type Handler struct {
 
 // New construye un Handler. accounts y client deben estar ya inicializados
 // (accounts.LoadCredentials/Initialize ya corridos; client listo para
-// RequestWithRetry) — New no hace I/O por sí mismo.
-func New(accounts *accountmanager.Manager, client *httpclient.Client, cfg *config.Config) *Handler {
+// RequestWithRetry) — New no hace I/O por sí mismo. truncation es la cache
+// compartida de recuperación de truncación (Task 8a/8b) — el llamador
+// (internal/server.New) debe pasar la MISMA instancia que routesanthropic.New
+// recibe, para que el save de una petición y el inject de la siguiente vean
+// el mismo estado.
+func New(accounts *accountmanager.Manager, client *httpclient.Client, cfg *config.Config, truncation *truncationstate.State) *Handler {
 	return &Handler{
-		accounts: accounts,
-		client:   client,
-		cfg:      cfg,
+		accounts:   accounts,
+		client:     client,
+		cfg:        cfg,
+		truncation: truncation,
 		apiURL: func(acc *accountmanager.Account) string {
 			return acc.Auth.APIHost() + "/generateAssistantResponse"
 		},

@@ -14,10 +14,12 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/accounterrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/convertersanthropic"
+	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
 	"github.com/marr-cloud/kiro-gateway-go/internal/kiroerrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsanthropic"
 	"github.com/marr-cloud/kiro-gateway-go/internal/networkerrors"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationrecovery"
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
 )
 
@@ -37,6 +39,13 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeAnthropicError(w, http.StatusBadRequest, "invalid_request_error", "invalid JSON in request body: "+err.Error())
 		return
+	}
+
+	// Truncation recovery (Task 8a, lado READ/inject): corre ANTES de
+	// web_search Path B/A, igual que el original (routes_anthropic.py:156-244
+	// antes de :255-310).
+	if truncationrecovery.ShouldInjectRecovery(converterscore.TruncationRecoveryEnabled) {
+		h.injectTruncationRecovery(&req)
 	}
 
 	h.injectWebSearchTool(&req)

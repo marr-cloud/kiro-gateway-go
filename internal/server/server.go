@@ -49,6 +49,7 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
 	"github.com/marr-cloud/kiro-gateway-go/internal/routesanthropic"
 	"github.com/marr-cloud/kiro-gateway-go/internal/routesopenai"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 	"github.com/marr-cloud/kiro-gateway-go/internal/version"
 )
 
@@ -87,8 +88,14 @@ type Server struct {
 func New(cfg *config.Config, accounts *accountmanager.Manager, client *httpclient.Client) *Server {
 	s := &Server{cfg: cfg, accounts: accounts}
 
-	openaiHandler := routesopenai.New(accounts, client, cfg)
-	anthropicHandler := routesanthropic.New(accounts, client, cfg)
+	// UNA sola *truncationstate.State compartida entre los dos dialectos
+	// (Task 8a/8b): el save de una petición (cualquier dialecto) y el
+	// inject de la SIGUIENTE petición (cualquier dialecto) deben ver el
+	// mismo estado — ver el comentario de Handler.truncation en
+	// routesopenai/routesanthropic.
+	truncation := truncationstate.New()
+	openaiHandler := routesopenai.New(accounts, client, cfg, truncation)
+	anthropicHandler := routesanthropic.New(accounts, client, cfg, truncation)
 
 	s.openaiModels = openaiHandler.Models
 	s.openaiChatCompletions = openaiHandler.ChatCompletions

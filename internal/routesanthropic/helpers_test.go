@@ -15,6 +15,7 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 )
 
 // --- Fixtures/helpers compartidos por handler_test.go ---
@@ -104,10 +105,12 @@ func testConfig() *config.Config {
 }
 
 // newTestHandler construye un Handler cuyo apiURL apunta al httptest.Server
-// dado (mismo seam de test que routesopenai).
+// dado (mismo seam de test que routesopenai), con una *truncationstate.State
+// nueva y vacía por defecto — los tests que necesiten pre-poblarla (Task 8a)
+// construyen el Handler directamente con New en su lugar.
 func newTestHandler(t *testing.T, manager *accountmanager.Manager, cfg *config.Config, serverURL string) *Handler {
 	t.Helper()
-	h := New(manager, mustHTTPClient(t, cfg), cfg)
+	h := New(manager, mustHTTPClient(t, cfg), cfg, truncationstate.New())
 	h.apiURL = func(acc *accountmanager.Account) string {
 		return serverURL + "/generateAssistantResponse"
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsanthropic"
 	"github.com/marr-cloud/kiro-gateway-go/internal/tokenizer"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 )
 
 // --- Escenario 1: streaming — secuencia de eventos SSE Anthropic ---
@@ -304,7 +305,7 @@ func TestMessages_TransportErrorFailsOverAndArmsBreaker(t *testing.T) {
 	unreachableURL := unreachable.URL
 	unreachable.Close()
 
-	h := New(manager, mustHTTPClient(t, cfg), cfg)
+	h := New(manager, mustHTTPClient(t, cfg), cfg, truncationstate.New())
 	h.apiURL = func(acc *accountmanager.Account) string {
 		if acc.ID == badAccountID {
 			return unreachableURL + "/generateAssistantResponse"
@@ -345,7 +346,7 @@ func TestMessages_TransportErrorFailsOverAndArmsBreaker(t *testing.T) {
 func TestCountTokens_Local(t *testing.T) {
 	cfg := testConfig()
 	manager := newTestManager(t, cfg, []string{"tok"})
-	h := New(manager, mustHTTPClient(t, cfg), cfg)
+	h := New(manager, mustHTTPClient(t, cfg), cfg, truncationstate.New())
 
 	bodyMap := map[string]any{
 		"model": "claude-sonnet-4",

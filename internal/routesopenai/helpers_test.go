@@ -16,6 +16,7 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsopenai"
+	"github.com/marr-cloud/kiro-gateway-go/internal/truncationstate"
 )
 
 // --- Fixtures/helpers compartidos por handler_test.go ---
@@ -126,7 +127,7 @@ func testConfig() *config.Config {
 // override no exportado.
 func newTestHandler(t *testing.T, manager *accountmanager.Manager, cfg *config.Config, serverURL string) *Handler {
 	t.Helper()
-	h := New(manager, mustHTTPClient(t, cfg), cfg)
+	h := New(manager, mustHTTPClient(t, cfg), cfg, truncationstate.New())
 	h.apiURL = func(acc *accountmanager.Account) string {
 		return serverURL + "/generateAssistantResponse"
 	}
