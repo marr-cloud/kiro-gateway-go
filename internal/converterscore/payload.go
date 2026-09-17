@@ -370,10 +370,9 @@ func BuildKiroPayload(
 
 	// Guarda de tamaño de payload (AUTO_TRIM_PAYLOAD / KIRO_MAX_PAYLOAD_BYTES):
 	// ver el docstring de esta función y el comentario de estas dos
-	// variables en thinking.go. Sin implementar a propósito — fuera del
-	// alcance de esta tarea, y nunca ejercitado por el corpus.
+	// variables en thinking.go. Port de payload_guards.py.
 	if AutoTrimPayload {
-		_ = KiroMaxPayloadBytes
+		TrimPayloadToLimit(payload, KiroMaxPayloadBytes)
 	}
 
 	return KiroPayloadResult{Payload: payload, ToolDocumentation: toolDocumentation}
