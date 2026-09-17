@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/marr-cloud/kiro-gateway-go/internal/pyjson"
 	"github.com/marr-cloud/kiro-gateway-go/internal/sse"
 	"github.com/marr-cloud/kiro-gateway-go/internal/tokenizer"
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
@@ -29,22 +30,32 @@ func nowUnix() int64 {
 	return time.Now().Unix()
 }
 
-// Por qué no internal/pyjson aquí.
+// Por qué internal/pyjson aquí (fix round 1, parity #1).
 //
-// streaminganthropic/payloads.go pasa cada payload por pyjson.Dumps para
-// preservar el ORDEN de claves de bytes JSON ya parseados de upstream (y el
-// escapado ensure_ascii=False), porque esos eventos se comparan byte a byte
-// contra un corpus grabado del Python real (docs/CORPUS.md). Los eventos de
-// este archivo no tienen corpus (MAPPING.md, filas streaming_anthropic.py y
-// routes_anthropic.py documentan explícitamente que la intercepción
-// web_search no está cubierta por ningún fixture grabado) y sus payloads
-// los construye este mismo código a partir de structs Go, con orden de
-// campo ya fijo por declaración — no hay ningún orden "ajeno" que
-// preservar. El único efecto de omitir pyjson.Dumps es que caracteres como
-// & < > viajan como & < > en vez de literales: un cliente
-// JSON conforme decodifica ambos a la MISMA cadena, así que no hay
-// divergencia de VALOR, solo de bytes en la red — no vale la pena la
-// dependencia cruzada para este paquete.
+// format_sse_event(event_type, data) del original (.upstream/kiro/streaming_anthropic.py:70-85)
+// serializa SIEMPRE con `json.dumps(data, ensure_ascii=False)`: separadores
+// `", "`/`": "` (con espacio) y SIN escapar `&`/`<`/`>` a entidades HTML.
+// encoding/json.Marshal de Go diverge en ambos frentes — sin espacio tras
+// los dos puntos, y con `&`/`<`/`>` escapados a sus secuencias \u00XX (modo
+// HTML-safe por defecto). Para web_search en concreto eso es una divergencia
+// de bytes real y frecuente, no un caso de esquina: las URLs de resultado
+// están llenas de `&`, y títulos/snippets de `<`/`>`/`&`.
+// Cada emisor de SSE del port (streaminganthropic/payloads.go,
+// streaminganthropic/finish.go, streamingopenai) ya resuelve esto pasando
+// el payload por internal/pyjson.Dumps antes de enmarcarlo — este archivo
+// sigue el mismo patrón (writeAnthropicEvent/writeOpenAIChunk en
+// sseopenai.go) para quedar consistente con el resto del port, aunque no
+// haya corpus grabado que compare estos eventos byte a byte (MAPPING.md,
+// filas streaming_anthropic.py/routes_anthropic.py: la intercepción
+// web_search nunca se ejerció por ningún fixture).
+//
+// Una excepción deliberada: el "partial_json" del evento
+// content_block_delta (mcp_tools.py:354) es el resultado de
+// `json.dumps({"query": query})` SIN `ensure_ascii=False` — el default real
+// de Python (ensure_ascii=True). Por eso esa construcción concreta usa
+// pyjson.DumpsASCII, no pyjson.Dumps (ver el comentario de esa línea más
+// abajo) — pyjson.Dumps documenta expresamente que es solo para los call
+// sites que pasan ensure_ascii=False de forma explícita.
 
 // searchResultContentBlock es el elemento de "content" de un bloque
 // web_search_tool_result, mcp_tools.py:366-373,713-721 (encrypted_content
@@ -159,15 +170,22 @@ type anthropicMessageStop struct {
 	Type string `json:"type"`
 }
 
-// writeAnthropicEvent serializa payload y lo emite framed vía
-// internal/sse.FormatEvent(eventType, ...), igual que
+// writeAnthropicEvent serializa payload, lo reformatea con
+// internal/pyjson.Dumps (paridad de separadores/escapado con Python
+// json.dumps(..., ensure_ascii=False)) y lo emite framed vía
+// internal/sse.FormatEvent(eventType, ...) — el mismo patrón que
+// streaminganthropic/payloads.go::writeEvent, equivalente Go de
 // format_sse_event(event_type, data) del original.
 func writeAnthropicEvent(buf *[]byte, eventType string, payload any) error {
-	data, err := json.Marshal(payload)
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	*buf = append(*buf, sse.FormatEvent(eventType, data)...)
+	formatted, err := pyjson.Dumps(raw)
+	if err != nil {
+		return err
+	}
+	*buf = append(*buf, sse.FormatEvent(eventType, []byte(formatted))...)
 	return nil
 }
 
@@ -218,14 +236,21 @@ func GenerateAnthropicWebSearchSSE(model, query, toolUseID string, results map[s
 		return nil, err
 	}
 
-	queryJSON, err := json.Marshal(map[string]string{"query": query})
+	// mcp_tools.py:354: json.dumps({"query": query}) SIN ensure_ascii=False
+	// → default real de Python (ensure_ascii=True) → pyjson.DumpsASCII, no
+	// pyjson.Dumps (ver el comentario de cabecera del archivo).
+	queryRaw, err := json.Marshal(map[string]string{"query": query})
+	if err != nil {
+		return nil, err
+	}
+	queryJSON, err := pyjson.DumpsASCII(queryRaw)
 	if err != nil {
 		return nil, err
 	}
 	if err := writeAnthropicEvent(&out, "content_block_delta", contentBlockDelta{
 		Type:  "content_block_delta",
 		Index: 0,
-		Delta: inputJSONDelta{Type: "input_json_delta", PartialJSON: string(queryJSON)},
+		Delta: inputJSONDelta{Type: "input_json_delta", PartialJSON: queryJSON},
 	}); err != nil {
 		return nil, err
 	}

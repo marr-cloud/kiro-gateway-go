@@ -112,7 +112,8 @@ func TestHandleNativeWebSearch_StreamingAnthropic(t *testing.T) {
 	if !strings.Contains(s, "event: message_start") || !strings.Contains(s, "event: message_stop") {
 		t.Errorf("el body no parece un stream Anthropic completo: %s", s)
 	}
-	if !toolUseIDPattern.MatchString(extractFirstMatch(t, s, `"id":"(srvtoolu_[0-9a-f]{32})"`)) {
+	// Separador con espacio: pyjson.Dumps (fix round 1, parity #1).
+	if !toolUseIDPattern.MatchString(extractFirstMatch(t, s, `"id": "(srvtoolu_[0-9a-f]{32})"`)) {
 		t.Errorf("no se encontró un tool_use_id válido en el stream: %s", s)
 	}
 }

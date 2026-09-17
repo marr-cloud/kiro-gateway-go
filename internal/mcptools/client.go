@@ -70,23 +70,79 @@ type mcpRequestArguments struct {
 }
 
 // mcpResponseEnvelope es la forma mínima que CallKiroMCPAPI necesita leer de
-// la respuesta JSON-RPC. Puerto de mcp_tools.py:106-119. Error se deja como
-// json.RawMessage porque solo hace falta distinguir "ausente/null" de
-// "presente" (mcp_tools.py:180: `if "error" in mcp_response and
-// mcp_response["error"] is not None`), no decodificar su forma.
+// la respuesta JSON-RPC. Puerto de mcp_tools.py:106-119. Error y
+// Result.Content se dejan como json.RawMessage porque hace falta distinguir
+// "clave ausente/null" de "clave presente" (mcp_tools.py:180 para Error;
+// mcp_tools.py:185 — ver extractMCPResultText — para Content), algo que un
+// slice/bool tipado de Go no puede expresar: tanto la ausencia de la clave
+// como un valor vacío decodifican al mismo zero value.
 type mcpResponseEnvelope struct {
 	Result *mcpResult      `json:"result"`
 	Error  json.RawMessage `json:"error"`
 }
 
 type mcpResult struct {
-	Content []mcpContentItem `json:"content"`
-	IsError bool             `json:"isError"`
+	Content json.RawMessage `json:"content"`
+	IsError bool            `json:"isError"`
 }
 
-type mcpContentItem struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+// isJSONAbsentOrNull reporta si raw representa una clave ausente (slice
+// nil/vacío, json.RawMessage nunca escrito por encoding/json) o el literal
+// JSON `null` — los dos casos en los que Python `dict.get(key, default)`
+// devolvería default. Un valor PRESENTE aunque sea "falsy" (`[]`, `""`, `0`,
+// `false`) no cuenta como ausente: `.get` solo mira si la CLAVE existe.
+func isJSONAbsentOrNull(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))
+}
+
+// extractMCPResultText replica, paso a paso, mcp_tools.py:185:
+//
+//	result.get("content", [{}])[0].get("text", "{}")
+//
+// El default de cada .get() SOLO se aplica cuando la clave correspondiente
+// FALTA, nunca cuando está presente con un valor vacío — una distinción que
+// el port original (fix round 1) colapsaba al usar un slice/string tipado.
+// Casos, calcados del original:
+//
+//   - result nulo, o "content" ausente/null dentro de result: el original
+//     sintetiza el default [{}] → índice [0] da {} → .get("text","{}") en
+//     {} da "{}" → (ok=true, "{}").
+//   - "content" presente como lista NO vacía: se toma el elemento [0]. Si
+//     ese elemento no trae la clave "text", aplica su propio default "{}"
+//     → (ok=true, "{}"). Si trae "text" (aunque sea ""), se devuelve ese
+//     valor TAL CUAL, sin default — un "" hará que el siguiente
+//     json.Unmarshal falle (igual que json.loads("") lanza JSONDecodeError
+//     en el original), que CallKiroMCPAPI ya trata como fallo.
+//   - "content" presente como lista VACÍA ([]): indexar [0] es un
+//     IndexError en Python — sin excepción específica que lo capture,
+//     propaga al `except Exception` genérico de mcp_tools.py:200-202, que
+//     devuelve (None, None). Aquí: ok=false.
+func extractMCPResultText(result *mcpResult) (string, bool) {
+	if result == nil || isJSONAbsentOrNull(result.Content) {
+		return "{}", true
+	}
+
+	var items []json.RawMessage
+	if err := json.Unmarshal(result.Content, &items); err != nil {
+		return "", false
+	}
+	if len(items) == 0 {
+		// content:[] presente → IndexError en el original.
+		return "", false
+	}
+
+	var item struct {
+		Text *string `json:"text"`
+	}
+	if err := json.Unmarshal(items[0], &item); err != nil {
+		return "", false
+	}
+	if item.Text == nil {
+		// La clave "text" falta en el primer elemento → default "{}".
+		return "{}", true
+	}
+	return *item.Text, true
 }
 
 // CallKiroMCPAPI llama a la API MCP de Kiro para ejecutar la tool
@@ -163,16 +219,17 @@ func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvi
 		return "", nil, fmt.Errorf("mcptools: la respuesta MCP no es JSON válido: %w", err)
 	}
 
-	if len(bytes.TrimSpace(envelope.Error)) > 0 && !bytes.Equal(bytes.TrimSpace(envelope.Error), []byte("null")) {
+	if !isJSONAbsentOrNull(envelope.Error) {
 		// mcp_tools.py:180-182.
 		return "", nil, fmt.Errorf("mcptools: la API MCP devolvió un error: %s", envelope.Error)
 	}
 
-	// mcp_tools.py:185: result.get("content", [{}])[0].get("text", "{}") —
-	// defaults defensivos ante result/content ausentes o vacíos.
-	resultText := "{}"
-	if envelope.Result != nil && len(envelope.Result.Content) > 0 && envelope.Result.Content[0].Text != "" {
-		resultText = envelope.Result.Content[0].Text
+	// mcp_tools.py:185 — ver extractMCPResultText para el detalle
+	// clave-por-clave. ok=false replica el IndexError de un content:[]
+	// presente (fix round 1, Minor #2).
+	resultText, ok := extractMCPResultText(envelope.Result)
+	if !ok {
+		return "", nil, fmt.Errorf("mcptools: la respuesta MCP trae content vacío (mcp_tools.py:185, IndexError en el original)")
 	}
 
 	// DOBLE DESERIALIZACIÓN: resultText es una cadena que contiene JSON.

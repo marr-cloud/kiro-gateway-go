@@ -202,6 +202,91 @@ func TestCallKiroMCPAPI_InvalidInnerJSON(t *testing.T) {
 	}
 }
 
+// TestCallKiroMCPAPI_EmptyContentArrayFails (fix round 1, Minor #2):
+// result.content PRESENTE como lista vacía ([]) es un IndexError en el
+// original al indexar [0] (mcp_tools.py:185) — NO el mismo camino que
+// "content" ausente (que sintetiza [{}] y tiene éxito con resultText="{}").
+// Antes del fix, el Go colapsaba ambos casos (len(Content)==0) al mismo
+// resultado exitoso; ahora debe fallar.
+func TestCallKiroMCPAPI_EmptyContentArrayFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":      "x",
+			"jsonrpc": "2.0",
+			"result": map[string]any{
+				"content": []map[string]any{}, // presente, vacío — distinto de ausente
+				"isError": false,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	toolUseID, results, err := CallKiroMCPAPI(context.Background(), srv.URL, "q", fakeTokenProvider{token: "t"})
+	if err == nil {
+		t.Fatal("want error cuando content está presente pero vacío (IndexError en el original)")
+	}
+	if results != nil || toolUseID != "" {
+		t.Errorf("toolUseID/results = %q/%v, want vacío/nil", toolUseID, results)
+	}
+}
+
+// TestCallKiroMCPAPI_EmptyTextFails (fix round 1, Minor #2):
+// content[0].text PRESENTE como "" no dispara el default "{}" de
+// .get("text","{}") en el original (el default solo aplica si la clave
+// "text" FALTA) — el "" resultante hace que json.loads("") lance
+// JSONDecodeError, que también es un fallo. Antes del fix, el Go trataba
+// text:"" igual que text ausente y devolvía éxito con resultado vacío.
+func TestCallKiroMCPAPI_EmptyTextFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":      "x",
+			"jsonrpc": "2.0",
+			"result": map[string]any{
+				"content": []map[string]any{{"type": "text", "text": ""}}, // clave "text" presente, valor vacío
+				"isError": false,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	toolUseID, results, err := CallKiroMCPAPI(context.Background(), srv.URL, "q", fakeTokenProvider{token: "t"})
+	if err == nil {
+		t.Fatal("want error cuando text está presente pero vacío (JSONDecodeError de json.loads('') en el original)")
+	}
+	if results != nil || toolUseID != "" {
+		t.Errorf("toolUseID/results = %q/%v, want vacío/nil", toolUseID, results)
+	}
+}
+
+// TestCallKiroMCPAPI_ContentAbsent_TextKeyAbsent_Succeeds: caso de control
+// para el fix — "content" y "text" realmente AUSENTES (no vacíos) siguen
+// teniendo éxito con un mapa de resultados vacío, igual que antes del fix
+// (mcp_tools.py:185: ambos defaults SÍ aplican cuando la clave falta).
+func TestCallKiroMCPAPI_ContentAbsent_TextKeyAbsent_Succeeds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":      "x",
+			"jsonrpc": "2.0",
+			"result":  map[string]any{"isError": false}, // sin clave "content" en absoluto
+		})
+	}))
+	defer srv.Close()
+
+	toolUseID, results, err := CallKiroMCPAPI(context.Background(), srv.URL, "q", fakeTokenProvider{token: "t"})
+	if err != nil {
+		t.Fatalf("want éxito cuando content está realmente ausente, got err: %v", err)
+	}
+	if !toolUseIDPattern.MatchString(toolUseID) {
+		t.Errorf("toolUseID = %q, no matchea %s", toolUseID, toolUseIDPattern.String())
+	}
+	if len(results) != 0 {
+		t.Errorf("results = %v, want mapa vacío", results)
+	}
+}
+
 // TestCallKiroMCPAPI_AccessTokenError: si el TokenProvider falla, no se
 // llega a mandar el request.
 func TestCallKiroMCPAPI_AccessTokenError(t *testing.T) {

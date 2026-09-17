@@ -6,6 +6,7 @@ package mcptools
 import (
 	"encoding/json"
 
+	"github.com/marr-cloud/kiro-gateway-go/internal/pyjson"
 	"github.com/marr-cloud/kiro-gateway-go/internal/sse"
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
 )
@@ -14,6 +15,24 @@ import (
 // otro motivo que el tamaño de archivo — sigue siendo el mismo paquete, y
 // ambos generadores comparten chunkRunes/outputTokenCount/nowUnix definidos
 // en sse.go.
+
+// writeOpenAIChunk serializa chunk, lo reformatea con pyjson.Dumps —
+// mcp_tools.py:488,505,524 pasan explícitamente `json.dumps(chunk,
+// ensure_ascii=False)` en los tres sitios — y lo emite framed sin prefijo
+// "event:" (dialecto OpenAI). Ver el comentario de cabecera de sse.go sobre
+// por qué pyjson.Dumps y no encoding/json.Marshal a secas.
+func writeOpenAIChunk(buf *[]byte, chunk any) error {
+	raw, err := json.Marshal(chunk)
+	if err != nil {
+		return err
+	}
+	formatted, err := pyjson.Dumps(raw)
+	if err != nil {
+		return err
+	}
+	*buf = append(*buf, sse.FormatEvent("", []byte(formatted))...)
+	return nil
+}
 
 // --- Formato OpenAI (mcp_tools.py:431-527) ---
 
@@ -63,22 +82,18 @@ func GenerateOpenAIWebSearchSSE(model, query, toolUseID string, results map[stri
 		ID: completionID, Object: "chat.completion.chunk", Created: createdTime, Model: model,
 		Choices: []openAIChunkChoice{{Index: 0, Delta: openAIChoiceDelta{Role: "assistant"}, FinishReason: nil}},
 	}
-	data, err := json.Marshal(roleChunk)
-	if err != nil {
+	if err := writeOpenAIChunk(&out, roleChunk); err != nil {
 		return nil, err
 	}
-	out = append(out, sse.FormatEvent("", data)...)
 
 	for _, chunk := range chunkRunes(summary, 100) {
 		contentChunk := openAIChunk{
 			ID: completionID, Object: "chat.completion.chunk", Created: createdTime, Model: model,
 			Choices: []openAIChunkChoice{{Index: 0, Delta: openAIChoiceDelta{Content: chunk}, FinishReason: nil}},
 		}
-		data, err := json.Marshal(contentChunk)
-		if err != nil {
+		if err := writeOpenAIChunk(&out, contentChunk); err != nil {
 			return nil, err
 		}
-		out = append(out, sse.FormatEvent("", data)...)
 	}
 
 	stop := "stop"
@@ -91,11 +106,9 @@ func GenerateOpenAIWebSearchSSE(model, query, toolUseID string, results map[stri
 			TotalTokens:      inputTokens + outputTokens,
 		},
 	}
-	data, err = json.Marshal(finalChunk)
-	if err != nil {
+	if err := writeOpenAIChunk(&out, finalChunk); err != nil {
 		return nil, err
 	}
-	out = append(out, sse.FormatEvent("", data)...)
 
 	out = append(out, sse.FormatDone()...)
 	return out, nil
