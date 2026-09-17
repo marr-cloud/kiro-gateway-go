@@ -138,12 +138,35 @@ func TestContentWasTruncated(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := New("gpt-4o", AsContent)
-			f.fullContent = tt.content
-			f.toolCallsFromStream = make([]map[string]any, tt.toolCallCount)
+			var buf bytes.Buffer
+
+			// Add content events to set fullContent
+			if tt.content != "" {
+				f.Handle(streamingcore.KiroEvent{
+					Kind:    "content",
+					Content: tt.content,
+				}, &buf)
+			}
+
+			// Add tool calls
+			for i := 0; i < tt.toolCallCount; i++ {
+				f.Handle(streamingcore.KiroEvent{
+					Kind: "tool_use",
+					ToolUse: &streamingcore.ToolUseData{
+						ID:   "tc" + string(rune(i)),
+						Name: "tool",
+					},
+				}, &buf)
+			}
+
+			// Set other fields
 			if tt.hasCreditsUsed {
 				f.creditsUsedRaw = []byte(`{"some":"usage"}`)
 			}
 			f.receivedContextUsage = tt.receivedContextUsage
+
+			// Call Finish to compute and store contentWasTruncated
+			_ = f.Finish(&buf)
 
 			got := f.ContentWasTruncated()
 			if got != tt.expectTruncated {
@@ -225,5 +248,34 @@ func TestMultipleTruncatedTools(t *testing.T) {
 	// Verify order and contents
 	if truncated[0].ID != "tc1" || truncated[1].ID != "tc3" {
 		t.Errorf("Unexpected tool order: %v", truncated)
+	}
+}
+
+// TestContentWasTruncatedWithBracketToolCalls verifies that bracket-style
+// tool calls are correctly accounted for in ContentWasTruncated (Task 8b).
+// When content contains bracket tool calls, ContentWasTruncated must be FALSE.
+func TestContentWasTruncatedWithBracketToolCalls(t *testing.T) {
+	f := New("gpt-4o", AsContent)
+	var buf bytes.Buffer
+
+	// Content with bracket-style tool call pattern, no stream tool calls
+	contentWithBracket := "Some text [Called search with args: {\"query\": \"test\"}] more"
+	f.Handle(streamingcore.KiroEvent{
+		Kind:    "content",
+		Content: contentWithBracket,
+	}, &buf)
+
+	// No stream tool calls, no context_usage → normally would be truncated
+	// But bracket calls should make it NOT truncated
+	// Must call Finish to compute and store contentWasTruncated
+	if err := f.Finish(&buf); err != nil {
+		t.Fatalf("Finish failed: %v", err)
+	}
+
+	// Despite no context_usage and no stream tool calls, ContentWasTruncated
+	// must be FALSE because bracket calls are counted in Finish's allToolCalls
+	got := f.ContentWasTruncated()
+	if got {
+		t.Errorf("ContentWasTruncated: expected FALSE (bracket calls present), got TRUE")
 	}
 }
