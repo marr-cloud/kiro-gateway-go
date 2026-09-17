@@ -3,10 +3,12 @@
 
 // Package server es el equivalente Go del `lifespan` + registro de rutas de
 // FastAPI en .upstream/main.py:319-573: monta el mux HTTP, aplica el
-// middleware de CORS/auth/panic-recovery (middleware.go, spec §5.4) y expone
-// los dos endpoints de estado (§7.1). Task 11, la última de la fase 5: es el
-// paquete que ata routesopenai (Task 9), routesanthropic (Task 10), config
-// (fase 2) y accountmanager/httpclient (fase 4) en un *http.Server servible.
+// middleware de CORS/debug-logger/auth/panic-recovery (middleware.go, spec
+// §5.4; debugmiddleware montado en buildHandler, Task 5 de la fase 6a) y
+// expone los dos endpoints de estado (§7.1). Task 11, la última de la fase
+// 5: es el paquete que ata routesopenai (Task 9), routesanthropic (Task 10),
+// config (fase 2) y accountmanager/httpclient (fase 4) en un *http.Server
+// servible.
 //
 // # Desviaciones documentadas frente al brief/upstream
 //
@@ -43,6 +45,7 @@ import (
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
+	"github.com/marr-cloud/kiro-gateway-go/internal/debugmiddleware"
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
 	"github.com/marr-cloud/kiro-gateway-go/internal/routesanthropic"
 	"github.com/marr-cloud/kiro-gateway-go/internal/routesopenai"
@@ -103,7 +106,18 @@ func New(cfg *config.Config, accounts *accountmanager.Manager, client *httpclien
 // buildHandler registra el mux (endpoints de estado + los cuatro de la API,
 // cada uno indirecto vía los campos de Server para que el seam de test
 // funcione) y aplica el middleware en el orden del spec §5.4: CORS
-// (más externo) → auth → panic recovery (más interno, junto al mux).
+// (más externo) → debug logger → auth → panic recovery (más interno, junto
+// al mux).
+//
+// debugmiddleware.New se inserta ENTRE auth y CORS (es decir, la petición lo
+// atraviesa ANTES de auth Y ANTES de recoverMiddleware — queda fuera de
+// ambos) — ruling del controlador de Task 5 (fase 6a): debug_middleware.py
+// es un middleware GLOBAL en el original (Starlette BaseHTTPMiddleware
+// montado sobre toda la app, :53) que se auto-limita por ruta mirando
+// request.url.path (LOGGED_ENDPOINTS, :47-50, :82-83) y corre ANTES de la
+// validación del cuerpo — de ahí que en Python capture también los cuerpos
+// que luego fallan con 422. Montarlo antes que authMiddleware replica esa
+// misma propiedad "antes de validar" para el caso 401 también, no solo 422.
 func (s *Server) buildHandler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -121,6 +135,7 @@ func (s *Server) buildHandler() http.Handler {
 	var h http.Handler = mux
 	h = recoverMiddleware(h)
 	h = authMiddleware(s.cfg.ProxyAPIKey, h)
+	h = debugmiddleware.New(s.cfg)(h)
 	h = corsMiddleware(h)
 	return h
 }
