@@ -22,8 +22,10 @@ import (
 )
 
 // Messages responde POST /v1/messages. Port de routes_anthropic.py:119-908
-// (rama account-system; el modo web_search Path A/B no se porta, ver el punto
-// 5 de la cabecera de handler.go).
+// (rama account-system). web_search Path B (auto-inject) y Path A (early
+// return nativo) se cablean aquí, en el mismo orden que el original
+// (routes_anthropic.py:255-310: Path B primero, luego Path A) — ver
+// websearch.go.
 func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -34,6 +36,11 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	var req modelsanthropic.AnthropicMessagesRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeAnthropicError(w, http.StatusBadRequest, "invalid_request_error", "invalid JSON in request body: "+err.Error())
+		return
+	}
+
+	h.injectWebSearchTool(&req)
+	if h.handleNativeWebSearch(r.Context(), w, &req) {
 		return
 	}
 

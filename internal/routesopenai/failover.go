@@ -24,7 +24,10 @@ import (
 // ChatCompletions responde POST /v1/chat/completions. Port de
 // routes_openai.py:160-556 (rama de sistema de cuentas; la rama "legacy" sin
 // failover de routes_openai.py:558-769 no se porta — este servicio siempre
-// corre con accountmanager.Manager, ver docs/MAPPING.md).
+// corre con accountmanager.Manager, ver docs/MAPPING.md). web_search Path B
+// (auto-inject, routes_openai.py:236-272) se cablea aquí — ver websearch.go
+// para el porqué de que Path A NO se porte en esta ruta (ausente en el
+// original).
 func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -37,6 +40,8 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusBadRequest, "invalid JSON in request body: "+err.Error())
 		return
 	}
+
+	h.injectWebSearchTool(&req)
 
 	h.failoverChatCompletions(r.Context(), w, &req)
 }

@@ -48,11 +48,12 @@
 //     más fontanería, ni nada útil que devolver por una conexión ya rota. Los
 //     errores PRE-stream (cuerpo inválido, cuentas agotadas, error Fatal de
 //     Kiro) sí emiten el JSON de error Anthropic correcto.
-//  5. web_search (Path A / Path B, routes_anthropic.py:262-310,354-468) NO se
-//     porta: intercepta tools server-side de Anthropic llamando a una API MCP
-//     de red real (kiro.mcp_tools), fuera del alcance de una capa de rutas SSE
-//     — misma decisión que Task 8 tomó para el formatter (ver docs/MAPPING.md,
-//     fila streaming_anthropic.py). Queda para quien porte mcp_tools.py.
+//
+// web_search (Path A / Path B) SÍ está cableado (Task 7, websearch.go):
+// Path B inyecta la tool sintética de emulación MCP (routes_anthropic.py:255-280)
+// y Path A intercepta ANTES del bucle de failover cuando la petición trae una
+// tool server-side nativa (routes_anthropic.py:282-310), delegando en
+// internal/mcptools (Task 6). Ver websearch.go para el detalle.
 package routesanthropic
 
 import (
@@ -77,6 +78,15 @@ type Handler struct {
 	// routesopenai.Handler.apiURL para que handler_test.go (mismo paquete)
 	// pueda apuntar a su httptest.Server; inaccesible desde fuera del paquete.
 	apiURL func(acc *accountmanager.Account) string
+
+	// mcpHost construye la URL del host MCP (Q API) para una cuenta dada, que
+	// websearch.go::handleNativeWebSearch (Path A) usa para llamar a
+	// mcptools.HandleNativeWebSearch. Por defecto, acc.Auth.QHost()
+	// (producción, mcp_tools.py:84: f"{auth_manager.q_host}/mcp" —
+	// mcptools.CallKiroMCPAPI añade el sufijo "/mcp"). Mismo patrón de seam
+	// no exportado que apiURL, para que websearch_test.go (mismo paquete)
+	// pueda apuntar al MCP falso de sus pruebas de Path A.
+	mcpHost func(acc *accountmanager.Account) string
 }
 
 // New construye un Handler. accounts y client deben estar ya inicializados —
@@ -88,6 +98,9 @@ func New(accounts *accountmanager.Manager, client *httpclient.Client, cfg *confi
 		cfg:      cfg,
 		apiURL: func(acc *accountmanager.Account) string {
 			return acc.Auth.APIHost() + "/generateAssistantResponse"
+		},
+		mcpHost: func(acc *accountmanager.Account) string {
+			return acc.Auth.QHost()
 		},
 	}
 }
