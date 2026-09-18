@@ -94,8 +94,21 @@ go build -o kiro-gateway ./cmd/kiro-gateway
 
 The server is available at `http://localhost:8000`.
 
-> A Docker image and cross-platform release binaries are planned but **not available yet**; for
-> now you build from source. See [docs/DIFFERENCES.md](docs/DIFFERENCES.md).
+### With Docker
+
+```bash
+# Create a .env in the root with REFRESH_TOKEN and PROXY_API_KEY (see Configuration)
+docker compose up -d
+docker compose logs -f
+curl http://localhost:8000/health
+```
+
+The image is multi-stage on `distroless/static:nonroot` (~27 MB, no shell, non-root user) and its
+healthcheck uses the binary itself (`--health`). See [`Dockerfile`](Dockerfile) and
+[`docker-compose.yml`](docker-compose.yml).
+
+> Cross-platform release binaries are planned but **not available yet**; for now you build from
+> source or use Docker.
 
 ### Command-line flags
 

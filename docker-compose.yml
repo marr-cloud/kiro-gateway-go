@@ -1,0 +1,37 @@
+# Despliegue local de kiro-gateway-go con Docker Compose.
+# Port a Go de jwadow/kiro-gateway; ver NOTICE.
+#
+# Uso:
+#   1. Crea un fichero .env en la raiz (ver README, seccion Configuracion).
+#      Como minimo: REFRESH_TOKEN y PROXY_API_KEY.
+#   2. docker compose up -d
+#   3. docker compose logs -f   |   curl http://localhost:8000/health
+
+services:
+  kiro-gateway:
+    build:
+      context: .
+      args:
+        # Inyecta una version en el binario. Vacia -> 2.4.dev.13+go (por defecto).
+        VERSION: ""
+    image: kiro-gateway-go:local
+    container_name: kiro-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    # Credenciales y ajustes. El healthcheck ya viene del Dockerfile (--health).
+    env_file:
+      - .env
+    # Persistencia y credenciales montadas desde el host. Descomenta lo que uses.
+    # La imagen corre como usuario no-root (uid 65532, home /home/nonroot): el
+    # punto de montaje debe ser accesible por ese usuario.
+    #
+    # volumes:
+    #   # Logs de depuracion (solo si DEBUG_MODE != off)
+    #   - ./debug_logs:/app/debug_logs
+    #   # Credenciales de Kiro IDE (elige tu SO)
+    #   - ~/.aws/sso/cache:/home/nonroot/.aws/sso/cache:ro                             # Linux/macOS
+    #   - ${USERPROFILE}/.aws/sso/cache:/home/nonroot/.aws/sso/cache:ro                # Windows
+    #   # Base de datos de kiro-cli (elige tu SO)
+    #   - ~/.local/share/kiro-cli:/home/nonroot/.local/share/kiro-cli:ro              # Linux/macOS
+    #   - ${USERPROFILE}/.local/share/kiro-cli:/home/nonroot/.local/share/kiro-cli:ro # Windows

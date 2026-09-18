@@ -1,0 +1,34 @@
+# Contexto de build de Docker. Se excluye todo lo que no necesita
+# `go build ./cmd/kiro-gateway` para mantener el contexto pequeno y sin secretos.
+
+# Control de versiones y CI.
+.git
+.github
+
+# Upstream fijado (41M, incluye su .venv) y utillaje del corpus: no entran en el build.
+.upstream/
+.superpowers/
+.kiro/
+tools/
+
+# Corpus golden y documentacion: no se compilan ni se embeben.
+testdata/
+docs/
+*.md
+
+# Secretos y estado local: NUNCA deben acabar en la imagen.
+.env
+*.env
+credentials.json
+state.json
+debug_logs/
+
+# Artefactos de compilacion locales.
+kiro-gateway
+kiro-gateway.exe
+
+# Empaquetado (no forma parte del binario).
+Dockerfile
+.dockerignore
+docker-compose.yml
+Taskfile.yml
