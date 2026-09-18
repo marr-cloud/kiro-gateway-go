@@ -65,7 +65,7 @@ func newTestManager(t *testing.T) *accountmanager.Manager {
 	}
 
 	cfg := testConfig()
-	cfg.KiroCredsFile = credentialsPath
+	cfg.AccountsConfigFile = credentialsPath
 
 	m, err := accountmanager.NewManager(cfg)
 	if err != nil {

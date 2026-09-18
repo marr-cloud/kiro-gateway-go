@@ -64,9 +64,9 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 	stateFile := cfg.AccountsStateFile
 	if stateFile == "" {
 		// Default: junto a credentials.json
-		if cfg.KiroCredsFile != "" {
+		if cfg.AccountsConfigFile != "" {
 			stateFile = filepath.Join(
-				filepath.Dir(cfg.KiroCredsFile),
+				filepath.Dir(cfg.AccountsConfigFile),
 				"state.json",
 			)
 		} else {

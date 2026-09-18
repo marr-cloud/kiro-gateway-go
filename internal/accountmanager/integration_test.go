@@ -53,7 +53,7 @@ func TestPhase4Integration(t *testing.T) {
 
 	// Create config pointing at the credentials file
 	cfg := &config.Config{
-		KiroCredsFile:        credentialsJSON,
+		AccountsConfigFile:   credentialsJSON,
 		KiroRegion:           "us-east-1",
 		AccountCacheTTL:      3600,
 		StreamingReadTimeout: 300,

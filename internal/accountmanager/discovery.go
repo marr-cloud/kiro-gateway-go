@@ -32,7 +32,7 @@ type credentialEntry struct {
 
 // loadCredentials lee credentials.json y descubre todas las cuentas válidas.
 func (m *Manager) loadCredentials(ctx context.Context) error {
-	credsFilePath := m.cfg.KiroCredsFile
+	credsFilePath := m.cfg.AccountsConfigFile
 	if credsFilePath == "" {
 		// Sin archivo de credenciales configurado
 		return nil

@@ -67,7 +67,7 @@ func TestDiscoveryThreeTypes(t *testing.T) {
 
 	// Crear config
 	cfg := &config.Config{
-		KiroCredsFile:            credsPath,
+		AccountsConfigFile:       credsPath,
 		AccountsStateFile:        filepath.Join(tmpDir, "state.json"),
 		StateSaveIntervalSeconds: 1,
 		AccountCacheTTL:          3600,
@@ -180,8 +180,8 @@ func TestDiscoveryDirectoryNonRecursive(t *testing.T) {
 	_ = os.WriteFile(credsPath, credsData, 0644)
 
 	cfg := &config.Config{
-		KiroCredsFile:     credsPath,
-		AccountsStateFile: filepath.Join(tmpDir, "state.json"),
+		AccountsConfigFile: credsPath,
+		AccountsStateFile:  filepath.Join(tmpDir, "state.json"),
 	}
 
 	mgr, err := NewManager(cfg)
@@ -235,8 +235,8 @@ func TestJSONValidityCheck(t *testing.T) {
 	_ = os.WriteFile(credsPath, credsData, 0644)
 
 	cfg := &config.Config{
-		KiroCredsFile:     credsPath,
-		AccountsStateFile: filepath.Join(tmpDir, "state.json"),
+		AccountsConfigFile: credsPath,
+		AccountsStateFile:  filepath.Join(tmpDir, "state.json"),
 	}
 
 	mgr, err := NewManager(cfg)
@@ -302,8 +302,8 @@ func TestSQLiteValidityCheck(t *testing.T) {
 	_ = os.WriteFile(credsPath, credsData, 0644)
 
 	cfg := &config.Config{
-		KiroCredsFile:     credsPath,
-		AccountsStateFile: filepath.Join(tmpDir, "state.json"),
+		AccountsConfigFile: credsPath,
+		AccountsStateFile:  filepath.Join(tmpDir, "state.json"),
 	}
 
 	mgr, err := NewManager(cfg)
@@ -353,7 +353,7 @@ func TestStateRoundTrip(t *testing.T) {
 	stateFile := filepath.Join(tmpDir, "state.json")
 
 	cfg := &config.Config{
-		KiroCredsFile:            credsPath,
+		AccountsConfigFile:       credsPath,
 		AccountsStateFile:        stateFile,
 		StateSaveIntervalSeconds: 1,
 	}
@@ -415,7 +415,7 @@ func TestSaveStatePeriodicallyCancel(t *testing.T) {
 	stateFile := filepath.Join(tmpDir, "state.json")
 
 	cfg := &config.Config{
-		KiroCredsFile:            credsPath,
+		AccountsConfigFile:       credsPath,
 		AccountsStateFile:        stateFile,
 		StateSaveIntervalSeconds: 1,
 	}
@@ -480,7 +480,7 @@ func TestAtomicRenameUnderLoad(t *testing.T) {
 	stateFile := filepath.Join(tmpDir, "state.json")
 
 	cfg := &config.Config{
-		KiroCredsFile:            credsPath,
+		AccountsConfigFile:       credsPath,
 		AccountsStateFile:        stateFile,
 		StateSaveIntervalSeconds: 1,
 	}
@@ -529,7 +529,7 @@ func TestRenameRetry(t *testing.T) {
 	stateFile := filepath.Join(tmpDir, "state.json")
 
 	cfg := &config.Config{
-		KiroCredsFile:            credsPath,
+		AccountsConfigFile:       credsPath,
 		AccountsStateFile:        stateFile,
 		StateSaveIntervalSeconds: 1,
 	}
@@ -590,7 +590,7 @@ func TestSaveStatePeriodically_SkipsSavesWhenClean(t *testing.T) {
 	stateFile := filepath.Join(tmpDir, "state.json")
 
 	cfg := &config.Config{
-		KiroCredsFile:            credsPath,
+		AccountsConfigFile:       credsPath,
 		AccountsStateFile:        stateFile,
 		StateSaveIntervalSeconds: 1,
 	}

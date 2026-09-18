@@ -83,7 +83,7 @@ func newTestManager(t *testing.T, cfg *config.Config, tokens []string) *accountm
 		t.Fatalf("write credentials.json: %v", err)
 	}
 
-	cfg.KiroCredsFile = credentialsPath
+	cfg.AccountsConfigFile = credentialsPath
 	if cfg.KiroRegion == "" {
 		cfg.KiroRegion = "us-east-1"
 	}
