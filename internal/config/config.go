@@ -21,7 +21,7 @@
 //     en {"true","1","yes"}. Cualquier otra cosa, incluida "" y valores
 //     no reconocidos, desactiva.
 //
-//  4. FAKE_REASONING invertida (única de las 35). El modo está activo
+//  4. FAKE_REASONING invertida (única de las 34). El modo está activo
 //     SALVO que el valor esté en {"false","0","no","disabled","off"};
 //     valores vacíos o ausentes lo activan. Verificado línea a línea contra
 //     kiro/config.py.
@@ -65,7 +65,6 @@ type Config struct {
 	KiroCredsFile                   string  // KIRO_CREDS_FILE (lectura cruda del .env)
 	KiroCLIDBFile                   string  // KIRO_CLI_DB_FILE (lectura cruda del .env)
 	SQLiteReadOnly                  bool    // SQLITE_READONLY
-	AccountSystem                   bool    // ACCOUNT_SYSTEM
 	AccountsConfigFile              string  // ACCOUNTS_CONFIG_FILE
 	AccountsStateFile               string  // ACCOUNTS_STATE_FILE
 	AccountRecoveryTimeout          int     // ACCOUNT_RECOVERY_TIMEOUT
@@ -108,7 +107,7 @@ type Options struct {
 	DotenvPath string
 }
 
-// Load resuelve las 35 variables siguiendo la precedencia documentada en
+// Load resuelve las 34 variables siguiendo la precedencia documentada en
 // el paquete. Devuelve un *Config completamente poblado, o un error si una
 // variable entera o float tiene un valor no parseable, replicando la caída
 // del import de config.py con ValueError.
@@ -183,7 +182,6 @@ func Load(opts Options) (*Config, error) {
 		KiroRegion:                      getString("KIRO_REGION", "us-east-1"),
 		KiroAPIRegion:                   getString("KIRO_API_REGION", ""),
 		SQLiteReadOnly:                  getBool("SQLITE_READONLY", false),
-		AccountSystem:                   getBool("ACCOUNT_SYSTEM", false),
 		AccountsConfigFile:              getString("ACCOUNTS_CONFIG_FILE", "credentials.json"),
 		AccountsStateFile:               getString("ACCOUNTS_STATE_FILE", "state.json"),
 		AccountRecoveryTimeout:          getInt("ACCOUNT_RECOVERY_TIMEOUT", 60),

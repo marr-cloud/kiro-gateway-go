@@ -12,14 +12,14 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
 )
 
-// allEnvVars lista las 35 variables que Load lee. Se conserva aquí para que
+// allEnvVars lista las 34 variables que Load lee. Se conserva aquí para que
 // el aislamiento sea exhaustivo: si se añade un campo al struct sin registrar
 // su variable, cualquier test que dependa de defaults empezará a fallar en
 // una máquina que la tenga puesta en el entorno.
 var allEnvVars = []string{
 	"PROXY_API_KEY", "SERVER_HOST", "SERVER_PORT", "VPN_PROXY_URL",
 	"REFRESH_TOKEN", "PROFILE_ARN", "KIRO_REGION", "KIRO_API_REGION",
-	"KIRO_CREDS_FILE", "KIRO_CLI_DB_FILE", "SQLITE_READONLY", "ACCOUNT_SYSTEM",
+	"KIRO_CREDS_FILE", "KIRO_CLI_DB_FILE", "SQLITE_READONLY",
 	"ACCOUNTS_CONFIG_FILE", "ACCOUNTS_STATE_FILE", "ACCOUNT_RECOVERY_TIMEOUT",
 	"ACCOUNT_MAX_BACKOFF_MULTIPLIER", "ACCOUNT_PROBABILISTIC_RETRY_CHANCE",
 	"ACCOUNT_CACHE_TTL", "STATE_SAVE_INTERVAL_SECONDS", "FIRST_TOKEN_TIMEOUT",
@@ -31,7 +31,7 @@ var allEnvVars = []string{
 	"DEBUG_MODE", "DEBUG_DIR",
 }
 
-// isolateEnv borra del entorno las 35 variables que Load lee y programa su
+// isolateEnv borra del entorno las 34 variables que Load lee y programa su
 // restauración al terminar el test. Se llama al principio de cada test que
 // inspecciona el resultado de Load para que la shell del usuario no pueda
 // influir en el resultado. testing.T no expone Unsetenv, así que se registra
@@ -66,7 +66,7 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	// Tabla con las 35 variables en el mismo orden que §7.2, para que un
+	// Tabla con las 34 variables en el mismo orden que §7.2, para que un
 	// revisor pueda comparar fila a fila sin recalcular.
 	type row struct {
 		name string
@@ -85,7 +85,6 @@ func TestLoadDefaults(t *testing.T) {
 		{"KIRO_CREDS_FILE", cfg.KiroCredsFile, ""},
 		{"KIRO_CLI_DB_FILE", cfg.KiroCLIDBFile, ""},
 		{"SQLITE_READONLY", cfg.SQLiteReadOnly, false},
-		{"ACCOUNT_SYSTEM", cfg.AccountSystem, false},
 		{"ACCOUNTS_CONFIG_FILE", cfg.AccountsConfigFile, "credentials.json"},
 		{"ACCOUNTS_STATE_FILE", cfg.AccountsStateFile, "state.json"},
 		{"ACCOUNT_RECOVERY_TIMEOUT", cfg.AccountRecoveryTimeout, 60},
@@ -110,8 +109,8 @@ func TestLoadDefaults(t *testing.T) {
 		{"DEBUG_MODE", cfg.DebugMode, "off"},
 		{"DEBUG_DIR", cfg.DebugDir, "debug_logs"},
 	}
-	if len(rows) != 35 {
-		t.Fatalf("la tabla de defaults tiene %d filas, quiero 35", len(rows))
+	if len(rows) != 34 {
+		t.Fatalf("la tabla de defaults tiene %d filas, quiero 34", len(rows))
 	}
 	for _, r := range rows {
 		if r.got != r.want {
