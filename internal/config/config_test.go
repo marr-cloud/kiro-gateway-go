@@ -12,14 +12,14 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
 )
 
-// allEnvVars lista las 35 variables que Load lee. Se conserva aquí para que
+// allEnvVars lista las 32 variables que Load lee. Se conserva aquí para que
 // el aislamiento sea exhaustivo: si se añade un campo al struct sin registrar
 // su variable, cualquier test que dependa de defaults empezará a fallar en
 // una máquina que la tenga puesta en el entorno.
 var allEnvVars = []string{
 	"PROXY_API_KEY", "SERVER_HOST", "SERVER_PORT", "VPN_PROXY_URL",
 	"REFRESH_TOKEN", "PROFILE_ARN", "KIRO_REGION", "KIRO_API_REGION",
-	"KIRO_CREDS_FILE", "KIRO_CLI_DB_FILE", "SQLITE_READONLY", "ACCOUNT_SYSTEM",
+	"SQLITE_READONLY",
 	"ACCOUNTS_CONFIG_FILE", "ACCOUNTS_STATE_FILE", "ACCOUNT_RECOVERY_TIMEOUT",
 	"ACCOUNT_MAX_BACKOFF_MULTIPLIER", "ACCOUNT_PROBABILISTIC_RETRY_CHANCE",
 	"ACCOUNT_CACHE_TTL", "STATE_SAVE_INTERVAL_SECONDS", "FIRST_TOKEN_TIMEOUT",
@@ -66,7 +66,7 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	// Tabla con las 35 variables en el mismo orden que §7.2, para que un
+	// Tabla con las 32 variables en el mismo orden que §7.2, para que un
 	// revisor pueda comparar fila a fila sin recalcular.
 	type row struct {
 		name string
@@ -82,10 +82,7 @@ func TestLoadDefaults(t *testing.T) {
 		{"PROFILE_ARN", cfg.ProfileARN, ""},
 		{"KIRO_REGION", cfg.KiroRegion, "us-east-1"},
 		{"KIRO_API_REGION", cfg.KiroAPIRegion, ""},
-		{"KIRO_CREDS_FILE", cfg.KiroCredsFile, ""},
-		{"KIRO_CLI_DB_FILE", cfg.KiroCLIDBFile, ""},
 		{"SQLITE_READONLY", cfg.SQLiteReadOnly, false},
-		{"ACCOUNT_SYSTEM", cfg.AccountSystem, false},
 		{"ACCOUNTS_CONFIG_FILE", cfg.AccountsConfigFile, "credentials.json"},
 		{"ACCOUNTS_STATE_FILE", cfg.AccountsStateFile, "state.json"},
 		{"ACCOUNT_RECOVERY_TIMEOUT", cfg.AccountRecoveryTimeout, 60},
@@ -110,8 +107,8 @@ func TestLoadDefaults(t *testing.T) {
 		{"DEBUG_MODE", cfg.DebugMode, "off"},
 		{"DEBUG_DIR", cfg.DebugDir, "debug_logs"},
 	}
-	if len(rows) != 35 {
-		t.Fatalf("la tabla de defaults tiene %d filas, quiero 35", len(rows))
+	if len(rows) != 32 {
+		t.Fatalf("la tabla de defaults tiene %d filas, quiero 32", len(rows))
 	}
 	for _, r := range rows {
 		if r.got != r.want {
@@ -237,63 +234,50 @@ func TestEnumsFallBackSilently(t *testing.T) {
 	}
 }
 
-func TestCredsPathFromDotenvIsNotUnescaped(t *testing.T) {
-	// Este es el test que protege a los usuarios de Windows: la ruta
-	// C:\Users\x\creds.json contiene la secuencia \U que un parser con
-	// interpretación de escapes convertiría en un carácter Unicode.
-	const winPath = `C:\Users\x\creds.json`
+func TestAccountsConfigPathFromDotenvIsNotUnescaped(t *testing.T) {
+	// Protege a los usuarios de Windows: la ruta C:\Users\x\credentials.json
+	// contiene la secuencia \U que un parser con interpretación de escapes
+	// convertiría en un carácter Unicode. ACCOUNTS_CONFIG_FILE es ahora la
+	// única ruta de credenciales que se lee del .env, con lectura raw-first.
+	const winPath = `C:\Users\x\credentials.json`
 
-	t.Run("KIRO_CREDS_FILE", func(t *testing.T) {
+	t.Run("ruta_windows_sobrevive", func(t *testing.T) {
 		isolateEnv(t)
-		dotenv := writeDotenv(t, "KIRO_CREDS_FILE="+winPath+"\n")
+		dotenv := writeDotenv(t, "ACCOUNTS_CONFIG_FILE="+winPath+"\n")
 		cfg, err := config.Load(config.Options{DotenvPath: dotenv})
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if cfg.KiroCredsFile != winPath {
-			t.Errorf("KiroCredsFile = %q, quiero %q", cfg.KiroCredsFile, winPath)
+		if cfg.AccountsConfigFile != winPath {
+			t.Errorf("AccountsConfigFile = %q, quiero %q", cfg.AccountsConfigFile, winPath)
 		}
 	})
 
-	t.Run("KIRO_CLI_DB_FILE", func(t *testing.T) {
+	t.Run("dotenv_gana_sobre_env", func(t *testing.T) {
+		// Lectura raw-first: el .env gana a la variable del shell aunque ambas
+		// estén puestas (`_get_raw_env_value(...) or os.getenv(...)`).
 		isolateEnv(t)
-		dotenv := writeDotenv(t, "KIRO_CLI_DB_FILE="+winPath+"\n")
+		t.Setenv("ACCOUNTS_CONFIG_FILE", "/from/shell/credentials.json")
+		dotenv := writeDotenv(t, "ACCOUNTS_CONFIG_FILE="+winPath+"\n")
 		cfg, err := config.Load(config.Options{DotenvPath: dotenv})
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if cfg.KiroCLIDBFile != winPath {
-			t.Errorf("KiroCLIDBFile = %q, quiero %q", cfg.KiroCLIDBFile, winPath)
-		}
-	})
-
-	t.Run("dotenv_gana_sobre_env_para_estas_dos", func(t *testing.T) {
-		// Quirk documentado: para KIRO_CREDS_FILE/KIRO_CLI_DB_FILE la
-		// lectura cruda del .env va primero, así que el .env gana a la
-		// variable de entorno del shell aunque ambas estén puestas. Es lo
-		// que hace config.py con `_get_raw_env_value(...) or os.getenv(...)`.
-		isolateEnv(t)
-		t.Setenv("KIRO_CREDS_FILE", "/from/shell/creds.json")
-		dotenv := writeDotenv(t, "KIRO_CREDS_FILE="+winPath+"\n")
-		cfg, err := config.Load(config.Options{DotenvPath: dotenv})
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if cfg.KiroCredsFile != winPath {
-			t.Errorf("KiroCredsFile = %q, quiero %q (el .env gana)", cfg.KiroCredsFile, winPath)
+		if cfg.AccountsConfigFile != winPath {
+			t.Errorf("AccountsConfigFile = %q, quiero %q (el .env gana)", cfg.AccountsConfigFile, winPath)
 		}
 	})
 
 	t.Run("shell_es_fallback_si_no_esta_en_dotenv", func(t *testing.T) {
 		isolateEnv(t)
-		t.Setenv("KIRO_CREDS_FILE", "/from/shell/creds.json")
+		t.Setenv("ACCOUNTS_CONFIG_FILE", "/from/shell/credentials.json")
 		dotenv := writeDotenv(t, "OTHER=irrelevant\n")
 		cfg, err := config.Load(config.Options{DotenvPath: dotenv})
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if cfg.KiroCredsFile != "/from/shell/creds.json" {
-			t.Errorf("KiroCredsFile = %q, quiero /from/shell/creds.json", cfg.KiroCredsFile)
+		if cfg.AccountsConfigFile != "/from/shell/credentials.json" {
+			t.Errorf("AccountsConfigFile = %q, quiero /from/shell/credentials.json", cfg.AccountsConfigFile)
 		}
 	})
 }
