@@ -20,12 +20,12 @@ import (
 
 // Los cinco patrones de kiro.model_resolver.normalize_model_name
 // (.upstream/kiro/model_resolver.py:141,151,159,170,180), probados en orden;
-// el primero que hace match decide el resultado. Mismos patrones ya
-// verificados contra corpus en internal/convertersanthropic y
-// internal/convertersopenai (duplicación temporal documentada en
-// docs/MAPPING.md, "Duplicación temporal: model_resolver.py") — aquí se
-// verifican de nuevo, independientemente, contra los 40 casos de
-// testdata/model_resolver/normalize_model_name.
+// el primero que hace match decide el resultado. Esta es la copia canónica:
+// internal/convertersanthropic e internal/convertersopenai llevaban antes
+// copias locales de estos patrones y desde la fase 6b delegan en
+// modelresolver.GetModelIDForKiro (docs/MAPPING.md, "Resolución de
+// model_resolver.py en los adaptadores"). Se verifican, independientemente,
+// contra los 40 casos de testdata/model_resolver/normalize_model_name.
 var (
 	// contextWindowSuffixPattern quita el sufijo de ventana de contexto
 	// (p.ej. "[1m]", "[200k]"): indicador de cliente, no parte del model ID.
