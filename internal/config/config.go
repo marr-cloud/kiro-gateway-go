@@ -62,10 +62,11 @@ type Config struct {
 	ProfileARN                      string  // PROFILE_ARN
 	KiroRegion                      string  // KIRO_REGION
 	KiroAPIRegion                   string  // KIRO_API_REGION (sin default; "" = sin fijar)
-	KiroCredsFile                   string  // fijado por cuenta desde credentials.json; no se lee del entorno
-	KiroCLIDBFile                   string  // fijado por cuenta desde credentials.json; no se lee del entorno
+	KiroCredsFile                   string  // KIRO_CREDS_FILE (lectura cruda del .env)
+	KiroCLIDBFile                   string  // KIRO_CLI_DB_FILE (lectura cruda del .env)
 	SQLiteReadOnly                  bool    // SQLITE_READONLY
-	AccountsConfigFile              string  // ACCOUNTS_CONFIG_FILE (fichero de cuentas; lectura raw-first del .env)
+	AccountSystem                   bool    // ACCOUNT_SYSTEM
+	AccountsConfigFile              string  // ACCOUNTS_CONFIG_FILE
 	AccountsStateFile               string  // ACCOUNTS_STATE_FILE
 	AccountRecoveryTimeout          int     // ACCOUNT_RECOVERY_TIMEOUT
 	AccountMaxBackoffMultiplier     int     // ACCOUNT_MAX_BACKOFF_MULTIPLIER
@@ -182,6 +183,9 @@ func Load(opts Options) (*Config, error) {
 		KiroRegion:                      getString("KIRO_REGION", "us-east-1"),
 		KiroAPIRegion:                   getString("KIRO_API_REGION", ""),
 		SQLiteReadOnly:                  getBool("SQLITE_READONLY", false),
+		AccountSystem:                   getBool("ACCOUNT_SYSTEM", false),
+		AccountsConfigFile:              getString("ACCOUNTS_CONFIG_FILE", "credentials.json"),
+		AccountsStateFile:               getString("ACCOUNTS_STATE_FILE", "state.json"),
 		AccountRecoveryTimeout:          getInt("ACCOUNT_RECOVERY_TIMEOUT", 60),
 		AccountMaxBackoffMultiplier:     getInt("ACCOUNT_MAX_BACKOFF_MULTIPLIER", 1440),
 		AccountProbabilisticRetryChance: getFloat("ACCOUNT_PROBABILISTIC_RETRY_CHANCE", 0.1),
@@ -217,15 +221,13 @@ func Load(opts Options) (*Config, error) {
 	rawFR, _ := lookup("FAKE_REASONING")
 	cfg.FakeReasoning = parseBoolInverted(rawFR)
 
-	// Rutas de cuentas: lectura raw-first (.env gana sobre el shell) para
-	// preservar backslashes de Windows, la misma precedencia que antes tenían
-	// las rutas de credenciales de cuenta única (ya retiradas: el port solo
-	// carga cuentas desde ACCOUNTS_CONFIG_FILE, ver docs/DIFFERENCES.md). No
-	// pasan por filepath.Clean: os.Open acepta ambos separadores.
-	rawAccts, okAccts := lookupPath("ACCOUNTS_CONFIG_FILE")
-	cfg.AccountsConfigFile = parseString(rawAccts, okAccts, "credentials.json")
-	rawState, okState := lookupPath("ACCOUNTS_STATE_FILE")
-	cfg.AccountsStateFile = parseString(rawState, okState, "state.json")
+	// Rutas: lectura cruda del .env con fallback al shell. No pasan por
+	// filepath.Clean para no arriesgar transformaciones espurias en
+	// Windows; os.Open acepta ambos separadores sin problema.
+	rawCreds, _ := lookupPath("KIRO_CREDS_FILE")
+	cfg.KiroCredsFile = rawCreds
+	rawCLIDB, _ := lookupPath("KIRO_CLI_DB_FILE")
+	cfg.KiroCLIDBFile = rawCLIDB
 
 	// Los overrides del CLI se aplican al final para que ganen a todo.
 	if opts.Host != "" {
