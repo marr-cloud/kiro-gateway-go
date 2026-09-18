@@ -1,0 +1,120 @@
+name: Release
+
+# Se dispara al empujar un tag de version (p.ej. v1.0.0). El tag da la version
+# que se incrusta en el binario (internal/version.build) y nombra el release y
+# la imagen. Sin tag no corre: es distinto del CI, que valida cada push/PR.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # crear el GitHub Release y subir artefactos
+  packages: write # publicar la imagen en ghcr.io
+
+jobs:
+  # 1) Compila los binarios de cada plataforma, los empaqueta y los sube como
+  #    artefactos de workflow. La matriz espeja la de ci.yml.
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: windows, goarch: amd64, ext: .exe }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+      - name: Compilar y empaquetar ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          bin="kiro-gateway${{ matrix.ext }}"
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/marr-cloud/kiro-gateway-go/internal/version.build=${VERSION}" \
+            -o "${bin}" ./cmd/kiro-gateway
+          stage="kiro-gateway_${VERSION}_${GOOS}_${GOARCH}"
+          mkdir -p "dist/${stage}"
+          cp "${bin}" LICENSE NOTICE README.md README.en.md "dist/${stage}/"
+          mkdir -p out
+          if [ "${GOOS}" = "windows" ]; then
+            (cd dist && zip -qr "../out/${stage}.zip" "${stage}")
+          else
+            tar -C dist -czf "out/${stage}.tar.gz" "${stage}"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: out/*
+          retention-days: 1
+
+  # 2) Reune todos los artefactos, calcula los checksums y publica el Release.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: staging
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd staging
+          # Solo los archivos (nombre kiro-gateway_*); asi SHA256SUMS no se
+          # lista a si mismo (el redirect lo crearia antes de expandir el glob).
+          sha256sum kiro-gateway_* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Crear el GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ github.ref_name }}" staging/* \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+
+  # 3) Construye y publica la imagen multi-arch en ghcr.io. Usa el Dockerfile
+  #    de la raiz (base distroless, healthcheck --health). QEMU emula arm64.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Login en ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Metadatos (tags/labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - name: Build y push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
