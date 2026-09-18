@@ -76,11 +76,17 @@ func TestReportFailureAsForcesClassification(t *testing.T) {
 // pre-computed classification — the refactor that introduced ReportFailureAs
 // must not change ReportFailure's existing, already-tested behavior.
 func TestReportFailureDelegatesToReportFailureAs(t *testing.T) {
+	// Reloj FIJO compartido: ReportFailure y ReportFailureAs capturan LastFailure
+	// vía m.clock(); con time.Now las dos llamadas difieren en nanosegundos y el
+	// struct AccountStats no coincide en relojes de alta resolución (Linux CI),
+	// aunque sí en Windows (baja resolución). La invariante que este test guarda
+	// es "mismos side-effects", no la hora, así que un reloj fijo la aísla.
+	fixedNow := time.Unix(1700000000, 0).UTC()
 	newManager := func() *Manager {
 		m := &Manager{
 			accounts:  make([]*Account, 1),
 			stickyIdx: 0,
-			clock:     time.Now,
+			clock:     func() time.Time { return fixedNow },
 			randFloat: func() float64 { return 0.5 },
 			cfg:       &config.Config{AccountRecoveryTimeout: 60, AccountMaxBackoffMultiplier: 1440, AccountProbabilisticRetryChance: 0.1},
 		}
