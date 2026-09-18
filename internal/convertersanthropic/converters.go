@@ -53,36 +53,26 @@ package convertersanthropic
 
 import (
 	"encoding/json"
-	"regexp"
 	"strings"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
+	"github.com/marr-cloud/kiro-gateway-go/internal/modelresolver"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsanthropic"
 	"github.com/marr-cloud/kiro-gateway-go/internal/pyjson"
 )
 
 // ==================================================================================================
-// Resolución de model ID (kiro.model_resolver, subconjunto)
+// Resolución de model ID (kiro.model_resolver)
 // ==================================================================================================
 //
 // anthropic_to_kiro (.upstream/kiro/converters_anthropic.py:481) calcula el
 // model_id que manda a Kiro con
 // `get_model_id_for_kiro(request.model, HIDDEN_MODELS)`, importado de
-// kiro.model_resolver (no de converters_anthropic.py). docs/MAPPING.md
-// asigna ese módulo completo a un paquete propio, internal/modelresolver,
-// que todavía no existe — es una tarea futura del plan de fase 3, fuera del
-// alcance de esta (Task 9 solo puede tocar internal/convertersanthropic/* y
-// docs/MAPPING.md). Crear ese paquete aquí violaría esa restricción.
-//
-// La propia documentación de get_model_id_for_kiro en el original la
-// describe como "a simple helper for converters that don't have access to
-// the full ModelResolver" — exactamente la situación de este adaptador. Este
-// fichero porta ESE subconjunto mínimo (normalize_model_name +
-// get_model_id_for_kiro, sin la clase ModelResolver completa, sin
-// extract_model_family, sin caché dinámica ni alias) como funciones no
-// exportadas, para no bloquear anthropic_to_kiro en un paquete que Task 9 no
-// puede crear. Cuando internal/modelresolver exista, la tarea que lo cree
-// debería sustituir este subconjunto por una llamada real a ese paquete.
+// kiro.model_resolver (no de converters_anthropic.py). Esa resolución ahora
+// delega en modelresolver.GetModelIDForKiro
+// (internal/modelresolver/resolver.go:170), el port literal de
+// get_model_id_for_kiro, en vez de mantener una copia local del subconjunto
+// normalizeModelName + getModelIDForKiro.
 //
 // HiddenModels es el equivalente de HIDDEN_MODELS (kiro.config, global de
 // módulo que converters_anthropic.py importa con `from kiro.config import
@@ -96,64 +86,6 @@ import (
 // mantiene de todos modos porque es fiel al mecanismo real y necesaria si
 // algún caso futuro sí la ejercitara.
 var HiddenModels = map[string]string{}
-
-// Los cinco patrones de kiro.model_resolver.normalize_model_name
-// (.upstream/kiro/model_resolver.py:93-175), copiados literalmente.
-var (
-	modelSuffixPattern    = regexp.MustCompile(`(?i)\[\d+[mk]\]$`)
-	standardModelPattern  = regexp.MustCompile(`^(claude-(?:haiku|sonnet|opus)-\d+)-(\d{1,2})(?:-(?:\d{8}|latest|\d+))?$`)
-	noMinorModelPattern   = regexp.MustCompile(`^(claude-(?:haiku|sonnet|opus)-\d+)(?:-\d{8})?$`)
-	legacyModelPattern    = regexp.MustCompile(`^(claude)-(\d+)-(\d+)-(haiku|sonnet|opus)(?:-(?:\d{8}|latest|\d+))?$`)
-	dotWithDateModelRegex = regexp.MustCompile(`^(claude-(?:\d+\.\d+-)?(?:haiku|sonnet|opus)(?:-\d+\.\d+)?)-\d{8}$`)
-	invertedSuffixPattern = regexp.MustCompile(`^claude-(\d+)\.(\d+)-(haiku|sonnet|opus)-(.+)$`)
-)
-
-// normalizeModelName normaliza un nombre de modelo externo al formato que
-// espera Kiro. Port literal de kiro.model_resolver.normalize_model_name
-// (.upstream/kiro/model_resolver.py:93-175): los cinco patrones se prueban
-// en orden y el primero que hace match decide el resultado; sin match,
-// devuelve name tal cual (pass-through, preservando mayúsculas).
-func normalizeModelName(name string) string {
-	if name == "" {
-		return name
-	}
-
-	// Sufijo de ventana de contexto (p.ej. "[1m]", "[200k]"): indicador del
-	// cliente, no parte del model ID.
-	name = modelSuffixPattern.ReplaceAllString(name, "")
-	nameLower := strings.ToLower(name)
-
-	if m := standardModelPattern.FindStringSubmatch(nameLower); m != nil {
-		return m[1] + "." + m[2]
-	}
-	if m := noMinorModelPattern.FindStringSubmatch(nameLower); m != nil {
-		return m[1]
-	}
-	if m := legacyModelPattern.FindStringSubmatch(nameLower); m != nil {
-		return m[1] + "-" + m[2] + "." + m[3] + "-" + m[4]
-	}
-	if m := dotWithDateModelRegex.FindStringSubmatch(nameLower); m != nil {
-		return m[1]
-	}
-	if m := invertedSuffixPattern.FindStringSubmatch(nameLower); m != nil {
-		return "claude-" + m[3] + "-" + m[1] + "." + m[2]
-	}
-
-	return name
-}
-
-// getModelIDForKiro resuelve el model ID que se manda a Kiro. Port literal
-// de kiro.model_resolver.get_model_id_for_kiro
-// (.upstream/kiro/model_resolver.py:178-203): normaliza el nombre y
-// comprueba hiddenModels; to_runtime_model_id (línea 55-66 del original) es
-// un pass-through puro, así que no aporta nada que replicar aparte.
-func getModelIDForKiro(modelName string, hiddenModels map[string]string) string {
-	normalized := normalizeModelName(modelName)
-	if internal, ok := hiddenModels[normalized]; ok {
-		return internal
-	}
-	return normalized
-}
 
 // ==================================================================================================
 // Extractores puros
@@ -687,9 +619,9 @@ func ExtractThinkingConfigFromAnthropic(req *modelsanthropic.AnthropicMessagesRe
 //     System está ausente o es el literal JSON null) — a diferencia de
 //     ConvertAnthropicMessages, el system prompt SIEMPRE sale de
 //     ExtractSystemPrompt sobre request.system, nunca de los mensajes.
-//  4. modelID = getModelIDForKiro(req.Model, HiddenModels) — ver el
-//     comentario de cabecera de la sección "Resolución de model ID" más
-//     arriba sobre el alcance de este subconjunto.
+//  4. modelID = modelresolver.GetModelIDForKiro(req.Model, HiddenModels) —
+//     ver el comentario de cabecera de la sección "Resolución de model ID"
+//     más arriba.
 //  5. ExtractThinkingConfigFromAnthropic(req).
 //  6. converterscore.BuildKiroPayload(unifiedMessages, systemPrompt, modelID,
 //     unifiedTools, conversationID, profileArn, thinkingCfg).Payload — el
@@ -717,7 +649,7 @@ func AnthropicToKiro(req *modelsanthropic.AnthropicMessagesRequest, conversation
 	}
 	systemPrompt := ExtractSystemPrompt(systemAny)
 
-	modelID := getModelIDForKiro(req.Model, HiddenModels)
+	modelID := modelresolver.GetModelIDForKiro(req.Model, HiddenModels)
 
 	thinkingCfg := ExtractThinkingConfigFromAnthropic(req)
 

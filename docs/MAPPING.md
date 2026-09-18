@@ -40,34 +40,23 @@ Regla: el nombre del paquete Go es el del módulo Python sin guiones bajos. La c
 | `debug_middleware.py` | `internal/debugmiddleware` | `middleware.go`, `middleware_test.go` (Task 5 fase 6a. `New(cfg *config.Config) func(http.Handler) http.Handler` construye UN `*debuglogger.DebugLogger` compartido dentro del closure devuelto (single-flight, replicando el singleton de proceso `debug_logger` del original — `debug_logger.py:56-60` — pero closure-captured, no global mutable de paquete). **Ruling del controlador de esta tarea**: se monta como middleware GLOBAL en `internal/server.Server.buildHandler` (no como wrapper por-ruta del mux), igual que el `BaseHTTPMiddleware` de Starlette del original (también global, auto-limitado mirando `request.url.path`) — orden final `cors → debugmiddleware.New(cfg) → auth → recover → mux`, es decir, el middleware corre ANTES de auth (replica la propiedad "antes de validar" del original para 401 también, no solo 422) y dentro de CORS. `inScope` replica `LOGGED_ENDPOINTS` (`:47-50`, `POST /v1/chat/completions` y `POST /v1/messages` únicamente — exige POST explícitamente, ausente en el original porque Starlette ya solo registra ese verbo en esas rutas) y el guard de `DEBUG_MODE=="off"` (`:86-87`): fuera de esas 2 rutas, o con `dispatch` no llamado, el request pasa intacto. Para las 2 rutas en scope, el logger SIEMPRE se inyecta en el context (`context.WithValue`, clave no exportada `loggerCtxKey`, recuperable vía `FromContext(ctx) *debuglogger.DebugLogger`) incluso en modo `off` (inerte: ningún método de `DebugLogger` hace nada en ese modo) — solo cuando el modo no es `off` se llama además a `logger.PrepareNewRequest(ctx)` (instala el buffer de logs de aplicación de la petición) y se lee el cuerpo completo para `logger.LogRequestBody(body)` (`if body:`, `:104`, solo si no está vacío), ANTES de pasar al siguiente handler — igual que `debug_logger.prepare_new_request()` + `request.body()` + `log_request_body(body)` corren antes de la validación Pydantic en el original (`:96-108`). **Re-wrap del cuerpo** (necesario porque `net/http.Request.Body` es un stream de un solo uso, a diferencia de `request.body()` de Starlette que cachea el resultado, `:100-101`): tras leer, `r.Body` se repone con `io.NopCloser(bytes.NewReader(body))` para que el handler downstream (incluida la validación que produce un 422) pueda leer el cuerpo completo de nuevo — verificado por `TestChatCompletions_InvalidBody_StillPreparesLoggerBeforeValidation`, que fuerza un cuerpo JSON inválido, comprueba que el handler downstream ve los mismos bytes y que `request_body.json` se escribió en `DEBUG_DIR` (modo `all`, escritura inmediata) antes de que ese handler simulado devuelva 422. **Fuera de scope de esta tarea (YAGNI, según el brief)**: NO se cablea `FlushOnError`/`DiscardBuffers` en ningún handler de ruta — eso es responsabilidad de los handlers/exception-handlers en el original (`:110-113`, comentario de cabecera `:32-35`) y de tareas posteriores de esta fase; este middleware solo prepara y loguea el cuerpo crudo. **Montaje** (`internal/server/server.go`, `buildHandler`): `h = recoverMiddleware(h); h = authMiddleware(...); h = debugmiddleware.New(s.cfg)(h); h = corsMiddleware(h)` — debug ENTRE auth y CORS, de modo que la petición lo atraviesa antes que auth.) |
 | `__init__.py` | *(sin equivalente: solo reexporta)* | |
 
-## Duplicación temporal: `model_resolver.py`
+## Resolución de `model_resolver.py` en los adaptadores
 
-`internal/convertersanthropic/converters.go` (Task 9) porta, como funciones NO
-exportadas (`normalizeModelName`, `getModelIDForKiro`) más el package var
-`HiddenModels`, el subconjunto mínimo de `model_resolver.py` que
-`anthropic_to_kiro` necesita para calcular el `modelId` que manda a Kiro
-(`normalize_model_name` + `get_model_id_for_kiro`, sin la clase
-`ModelResolver` completa, sin caché dinámica ni alias — el propio original
-describe `get_model_id_for_kiro` como "a simple helper for converters that
-don't have access to the full ModelResolver"). Se hizo así porque
-`internal/modelresolver` (fila de arriba) todavía no existe y Task 9 no puede
-crear paquetes fuera de `internal/convertersanthropic/*`. Cuando una tarea
-futura implemente `internal/modelresolver`, debería sustituir ese subconjunto
-en `converters.go` por una llamada real a ese paquete en vez de mantener dos
-copias del mismo algoritmo.
-
-`internal/convertersopenai/converters.go` (Task 10) repite exactamente la
-misma duplicación, por la misma razón y con la misma restricción de alcance
-(Task 10 solo puede tocar `internal/convertersopenai/*` y este fichero):
-`build_kiro_payload` del original también llama a
-`get_model_id_for_kiro(request_data.model, HIDDEN_MODELS)`. En vez de
-importar `convertersanthropic` (sus dos funciones no están exportadas, y
-acoplar un adaptador a los internals de otro no reduce el radio de impacto),
-este paquete lleva su propia copia de `normalizeModelName` +
-`getModelIDForKiro` + `HiddenModels`. Cuando `internal/modelresolver` exista,
-la tarea que lo cree debería sustituir las TRES copias (converterscore no
-tiene una propia — solo los dos adaptadores) por una llamada real a ese
-paquete.
+`internal/convertersanthropic/converters.go` y
+`internal/convertersopenai/converters.go` calculan el `modelId` que mandan a
+Kiro (`anthropic_to_kiro`/`build_kiro_payload` llamando a
+`get_model_id_for_kiro(request.model, HIDDEN_MODELS)` en el original) con una
+llamada directa a `modelresolver.GetModelIDForKiro` (fila de arriba,
+`internal/modelresolver/resolver.go:170`) — el port literal de
+`get_model_id_for_kiro`, incluido el paso final `to_runtime_model_id`. Ambos
+adaptadores llevaban antes una copia local de ese mismo subconjunto
+(`normalizeModelName` + `getModelIDForKiro`, sin la clase `ModelResolver`
+completa) porque `internal/modelresolver` todavía no existía cuando se
+escribieron; esa duplicación se eliminó una vez el paquete quedó disponible.
+Cada adaptador conserva únicamente su propio package var `HiddenModels`
+(equivalente a `HIDDEN_MODELS` de `kiro.config`), que se pasa como segundo
+argumento en la llamada y que la respectiva suite de corpus sigue fijando
+por caso.
 
 ## Paquetes que no existen en el original
 

@@ -49,36 +49,25 @@ package convertersopenai
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
+	"github.com/marr-cloud/kiro-gateway-go/internal/modelresolver"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsopenai"
 )
 
 // ==================================================================================================
-// Resolución de model ID (kiro.model_resolver, subconjunto)
+// Resolución de model ID (kiro.model_resolver)
 // ==================================================================================================
 //
 // build_kiro_payload (.upstream/kiro/converters_openai.py:423) calcula el
 // model_id que manda a Kiro con `get_model_id_for_kiro(request_data.model,
 // HIDDEN_MODELS)`, importado de kiro.model_resolver (no de
 // converters_openai.py) — exactamente la misma función que usa el adaptador
-// Anthropic (Task 9). internal/modelresolver (docs/MAPPING.md) todavía no
-// existe: es una tarea futura del plan de fase 3, fuera del alcance de esta
-// (Task 10 solo puede tocar internal/convertersopenai/* y docs/MAPPING.md).
-//
-// Este fichero porta el mismo subconjunto mínimo que ya justificó Task 9 en
-// internal/convertersanthropic/converters.go (normalizeModelName +
-// getModelIDForKiro, sin la clase ModelResolver completa) como funciones no
-// exportadas PROPIAS de este paquete, en vez de importar
-// convertersanthropic: ese paquete no las exporta (son funciones internas
-// suyas), y duplicar el subconjunto mínimo mantiene el radio de impacto de
-// cada adaptador contenido a su propio paquete — el mismo criterio que ya
-// aplicó Task 9 frente a reutilizar código de converters_core. Cuando
-// internal/modelresolver exista, la tarea que lo cree debería sustituir
-// ambas copias (esta y la de convertersanthropic) por una llamada real a ese
-// paquete.
+// Anthropic (Task 9). Esa resolución ahora delega en
+// modelresolver.GetModelIDForKiro (internal/modelresolver/resolver.go:170),
+// el port literal de get_model_id_for_kiro, en vez de mantener una copia
+// local del subconjunto normalizeModelName + getModelIDForKiro.
 //
 // HiddenModels es el equivalente de HIDDEN_MODELS (kiro.config, global de
 // módulo que converters_openai.py importa con `from kiro.config import
@@ -88,64 +77,6 @@ import (
 // tiene cobertura golden más allá de "el mapa vacío no cambia nada" — se
 // mantiene de todos modos por fidelidad al mecanismo real.
 var HiddenModels = map[string]string{}
-
-// Los cinco patrones de kiro.model_resolver.normalize_model_name
-// (.upstream/kiro/model_resolver.py:93-175), copiados literalmente — misma
-// fuente y mismo orden de intento que convertersanthropic.
-var (
-	modelSuffixPattern    = regexp.MustCompile(`(?i)\[\d+[mk]\]$`)
-	standardModelPattern  = regexp.MustCompile(`^(claude-(?:haiku|sonnet|opus)-\d+)-(\d{1,2})(?:-(?:\d{8}|latest|\d+))?$`)
-	noMinorModelPattern   = regexp.MustCompile(`^(claude-(?:haiku|sonnet|opus)-\d+)(?:-\d{8})?$`)
-	legacyModelPattern    = regexp.MustCompile(`^(claude)-(\d+)-(\d+)-(haiku|sonnet|opus)(?:-(?:\d{8}|latest|\d+))?$`)
-	dotWithDateModelRegex = regexp.MustCompile(`^(claude-(?:\d+\.\d+-)?(?:haiku|sonnet|opus)(?:-\d+\.\d+)?)-\d{8}$`)
-	invertedSuffixPattern = regexp.MustCompile(`^claude-(\d+)\.(\d+)-(haiku|sonnet|opus)-(.+)$`)
-)
-
-// normalizeModelName normaliza un nombre de modelo externo al formato que
-// espera Kiro. Port literal de kiro.model_resolver.normalize_model_name
-// (.upstream/kiro/model_resolver.py:93-175): los cinco patrones se prueban
-// en orden y el primero que hace match decide el resultado; sin match,
-// devuelve name tal cual (pass-through, preservando mayúsculas).
-func normalizeModelName(name string) string {
-	if name == "" {
-		return name
-	}
-
-	// Sufijo de ventana de contexto (p.ej. "[1m]", "[200k]"): indicador del
-	// cliente, no parte del model ID.
-	name = modelSuffixPattern.ReplaceAllString(name, "")
-	nameLower := strings.ToLower(name)
-
-	if m := standardModelPattern.FindStringSubmatch(nameLower); m != nil {
-		return m[1] + "." + m[2]
-	}
-	if m := noMinorModelPattern.FindStringSubmatch(nameLower); m != nil {
-		return m[1]
-	}
-	if m := legacyModelPattern.FindStringSubmatch(nameLower); m != nil {
-		return m[1] + "-" + m[2] + "." + m[3] + "-" + m[4]
-	}
-	if m := dotWithDateModelRegex.FindStringSubmatch(nameLower); m != nil {
-		return m[1]
-	}
-	if m := invertedSuffixPattern.FindStringSubmatch(nameLower); m != nil {
-		return "claude-" + m[3] + "-" + m[1] + "." + m[2]
-	}
-
-	return name
-}
-
-// getModelIDForKiro resuelve el model ID que se manda a Kiro. Port literal
-// de kiro.model_resolver.get_model_id_for_kiro
-// (.upstream/kiro/model_resolver.py:178-203): normaliza el nombre y
-// comprueba hiddenModels.
-func getModelIDForKiro(modelName string, hiddenModels map[string]string) string {
-	normalized := normalizeModelName(modelName)
-	if internal, ok := hiddenModels[normalized]; ok {
-		return internal
-	}
-	return normalized
-}
 
 // ==================================================================================================
 // Extractores puros de mensajes
@@ -590,7 +521,7 @@ func ExtractThinkingConfigFromOpenAI(req *modelsopenai.ChatCompletionRequest) co
 //  1. ConvertOpenAIMessagesToUnified(req.Messages) → (systemPrompt,
 //     unifiedMessages).
 //  2. ConvertOpenAIToolsToUnified(req.Tools).
-//  3. modelID = getModelIDForKiro(req.Model, HiddenModels).
+//  3. modelID = modelresolver.GetModelIDForKiro(req.Model, HiddenModels).
 //  4. ExtractThinkingConfigFromOpenAI(req).
 //  5. converterscore.BuildKiroPayload(unifiedMessages, systemPrompt, modelID,
 //     unifiedTools, conversationID, profileArn, thinkingCfg) — el original
@@ -606,7 +537,7 @@ func ExtractThinkingConfigFromOpenAI(req *modelsopenai.ChatCompletionRequest) co
 func BuildKiroPayload(req *modelsopenai.ChatCompletionRequest, conversationID string, profileArn string) converterscore.KiroPayloadResult {
 	systemPrompt, unifiedMessages := ConvertOpenAIMessagesToUnified(req.Messages)
 	unifiedTools := ConvertOpenAIToolsToUnified(req.Tools)
-	modelID := getModelIDForKiro(req.Model, HiddenModels)
+	modelID := modelresolver.GetModelIDForKiro(req.Model, HiddenModels)
 	thinkingCfg := ExtractThinkingConfigFromOpenAI(req)
 
 	return converterscore.BuildKiroPayload(
