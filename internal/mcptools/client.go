@@ -184,9 +184,13 @@ func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvi
 		return "", nil, fmt.Errorf("mcptools: serializando el request MCP: %w", err)
 	}
 
-	// Log MCP request (mcp_tools.py:139-145). pyjson.Dumps re-emits body with
-	// ensure_ascii=False (undoing encoding/json's HTML-escaping of <,>,&) and
-	// preserves key order; struct field order matches the upstream dict.
+	// Log del request MCP (mcp_tools.py:139-145). pyjson.Dumps re-emite body
+	// con ensure_ascii=False (deshaciendo el escape HTML de <,>,& que mete
+	// encoding/json) y conserva el orden de claves; el orden de campos del
+	// struct coincide con el dict del original. Un error de Dumps es
+	// inalcanzable aquí (body es el JSON que acabamos de serializar) y se
+	// ignora en silencio: como el try/except del original (mcp_tools.py:144),
+	// el logging nunca debe abortar la llamada MCP.
 	if logger != nil {
 		if reqDump, derr := pyjson.Dumps(body); derr == nil {
 			logger.LogRawChunk([]byte("[MCP REQUEST]\n" + reqDump))
@@ -232,8 +236,11 @@ func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvi
 		return "", nil, fmt.Errorf("mcptools: la respuesta MCP no es JSON válido: %w", err)
 	}
 
-	// Log MCP response (mcp_tools.py:169-175). Re-dump the raw response bytes
-	// with ensure_ascii=False, order preserved.
+	// Log de la respuesta MCP (mcp_tools.py:169-175). Re-emite los bytes crudos
+	// de la respuesta con ensure_ascii=False, orden conservado. Igual que en el
+	// request, un error de Dumps es inalcanzable (respBody se acaba de
+	// deserializar con éxito, así que es JSON válido) y se ignora en silencio
+	// para no abortar la llamada.
 	if logger != nil {
 		if respDump, derr := pyjson.Dumps(respBody); derr == nil {
 			logger.LogRawChunk([]byte("[MCP RESPONSE]\n" + respDump))

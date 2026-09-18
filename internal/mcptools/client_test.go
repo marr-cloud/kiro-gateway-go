@@ -306,10 +306,11 @@ func TestCallKiroMCPAPI_AccessTokenError(t *testing.T) {
 	}
 }
 
-// TestCallKiroMCPAPI_DebugLoggingWritesRequestAndResponse verifies that when a
-// DebugLogger is present in ctx, CallKiroMCPAPI logs the MCP request and the
-// full MCP response via LogRawChunk with the [MCP REQUEST]/[MCP RESPONSE]
-// markers (mcp_tools.py:139-145,169-175). ModeAll writes immediately to disk.
+// TestCallKiroMCPAPI_DebugLoggingWritesRequestAndResponse verifica que, cuando
+// hay un DebugLogger en el ctx, CallKiroMCPAPI loguea el request MCP y la
+// respuesta MCP completa vía LogRawChunk con los marcadores [MCP REQUEST]/
+// [MCP RESPONSE] (mcp_tools.py:139-145,169-175). ModeAll escribe a disco de
+// inmediato.
 func TestCallKiroMCPAPI_DebugLoggingWritesRequestAndResponse(t *testing.T) {
 	inner := `{"results":[{"title":"T<>&"}],"totalResults":1}`
 	envelope := map[string]any{
