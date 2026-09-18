@@ -141,6 +141,29 @@ valor que puso en el `.env`, no una versión saneada.
 
 ---
 
+### 10. Modelo de credenciales: solo `credentials.json`
+
+**Qué cambia:** el port carga las cuentas únicamente desde un array `credentials.json` (nombrado por
+`ACCOUNTS_CONFIG_FILE`, por defecto `credentials.json` en el directorio de trabajo). No implementa el
+modo de "cuenta única" del original —`REFRESH_TOKEN`, `KIRO_CREDS_FILE` o `KIRO_CLI_DB_FILE` sueltos
+en el `.env` como fuente de cuenta— ni el flag `ACCOUNT_SYSTEM` (que en el original activa el sistema
+multi-cuenta y aquí no gatea nada: el sistema de cuentas está siempre activo). `internal/auth` sí sabe
+cargar una credencial JSON o SQLite individual (lo usa `discovery` por cada entrada del array, y sus
+tests directamente), por lo que `KIRO_CREDS_FILE`/`KIRO_CLI_DB_FILE` siguen siendo variables válidas
+de `config` (ver §8, §9), pero el gateway en ejecución no las usa como fuente de cuentas.
+
+**Por qué:** `main.py` del original tiene dos rutas de credenciales (legacy de una cuenta y el sistema
+de cuentas). Portar ambas duplicaba la lógica de arranque para un beneficio marginal; el sistema de
+cuentas cubre el caso de una sola cuenta (un array de un elemento) sin bifurcación. Menos superficie,
+un solo camino de descubrimiento.
+
+**Impacto:** un `.env` del original que configure la credencial con `REFRESH_TOKEN`/`KIRO_CREDS_FILE`/
+`KIRO_CLI_DB_FILE` no carga ninguna cuenta en el port (devuelve 503 "no accounts available"). La
+migración es crear un `credentials.json` con una entrada equivalente. Ver
+[`credentials.json.example`](../credentials.json.example) y la sección Configuración del README.
+
+---
+
 ## Comportamientos del original que se replican a propósito
 
 El upstream tiene cinco comportamientos que son defectos o atajos, pero **se replican a propósito

@@ -83,8 +83,8 @@ task build
 # o directamente:
 go build -o kiro-gateway ./cmd/kiro-gateway
 
-# Configura las credenciales: crea un fichero .env en la raíz con, como mínimo,
-# REFRESH_TOKEN y PROXY_API_KEY (ver sección Configuración)
+# Configura las credenciales: un credentials.json con tus cuentas y un .env con
+# PROXY_API_KEY (ver sección Configuración)
 
 # Arranca el servidor
 ./kiro-gateway
@@ -98,7 +98,7 @@ El servidor queda disponible en `http://localhost:8000`.
 ### Con Docker
 
 ```bash
-# Crea un .env en la raíz con REFRESH_TOKEN y PROXY_API_KEY (ver Configuración)
+# Prepara credentials.json + un .env con PROXY_API_KEY (ver Configuración)
 docker compose up -d
 docker compose logs -f
 curl http://localhost:8000/health
@@ -125,54 +125,45 @@ su healthcheck usa el propio binario (`--health`). Ver [`Dockerfile`](Dockerfile
 
 ## Configuración
 
-La configuración se lee de variables de entorno o de un fichero `.env` en el directorio de
-trabajo. Protege **siempre** tu proxy con `PROXY_API_KEY`: es la clave que usarán los clientes al
-conectarse.
+Dos piezas: **`credentials.json`** define las cuentas de Kiro; el **`.env`** guarda la clave del
+proxy y los ajustes de comportamiento. Protege **siempre** tu proxy con `PROXY_API_KEY`: es la
+clave que usarán los clientes al conectarse.
 
-### Opción 1: token de refresco (`.env`)
+### Cuentas: `credentials.json`
+
+El gateway carga las cuentas de un array JSON. Por defecto busca `credentials.json` en el
+directorio de trabajo; puedes apuntar a otra ruta con `ACCOUNTS_CONFIG_FILE`. Cada entrada lleva un
+`type` (`json`, `sqlite` o `refresh_token`), `enabled: true`, y la ruta o el token correspondiente.
+Ver [`credentials.json.example`](credentials.json.example).
+
+```json
+[
+  { "type": "json",   "enabled": true, "path": "C:/Users/tu-usuario/.aws/sso/cache/kiro-auth-token.json" },
+  { "type": "sqlite", "enabled": true, "path": "C:/Users/tu-usuario/AppData/Local/kiro-cli/data.sqlite3" }
+]
+```
+
+- `json` — token de Kiro IDE / Enterprise (válido si contiene `refreshToken` o `clientId`).
+- `sqlite` — base de datos de kiro-cli (válida si tiene la tabla `auth_kv`).
+- `refresh_token` — un token de refresco directo (`"refresh_token": "eyJ..."`, opcional `profile_arn`).
+
+Con varias entradas el gateway hace **failover** automático: cuando una devuelve un error (429, 402)
+pasa a la siguiente; si una falla varias veces seguidas la aparta y la reintenta periódicamente. Con
+una sola cuenta no hay conmutación (se devuelve el error real de Kiro).
+
+> El port **no** implementa el modo de "cuenta única" del original (`REFRESH_TOKEN` /
+> `KIRO_CREDS_FILE` / `KIRO_CLI_DB_FILE` sueltos en el `.env` como fuente de cuenta): las cuentas se
+> definen siempre en `credentials.json`. Ver [docs/DIFFERENCES.md](docs/DIFFERENCES.md).
+
+### `.env`
 
 ```env
-# Obligatorio
-REFRESH_TOKEN="tu_refresh_token_de_kiro"
-
 # Contraseña para proteger TU proxy (inventa una cadena segura)
 PROXY_API_KEY="mi-contraseña-super-secreta-123"
 
-# Opcional
-PROFILE_ARN="arn:aws:codewhisperer:us-east-1:..."
-KIRO_REGION="us-east-1"
+# Opcional: ruta al fichero de cuentas (por defecto: credentials.json en el cwd)
+ACCOUNTS_CONFIG_FILE=C:/Users/tu-usuario/kiro/kiro-gateway/credentials.json
 ```
-
-### Opción 2: fichero de credenciales JSON (Kiro IDE / Enterprise)
-
-```env
-KIRO_CREDS_FILE="~/.aws/sso/cache/kiro-auth-token.json"
-PROXY_API_KEY="mi-contraseña-super-secreta-123"
-```
-
-El gateway detecta automáticamente el tipo de autenticación (Kiro Desktop Auth frente a AWS SSO
-OIDC) según el contenido del fichero. Para cuentas con AWS SSO (Builder ID o corporativas) **no
-hace falta** `PROFILE_ARN`.
-
-### Opción 3: base de datos SQLite de kiro-cli
-
-```env
-KIRO_CLI_DB_FILE="~/.local/share/kiro-cli/data.sqlite3"
-PROXY_API_KEY="mi-contraseña-super-secreta-123"
-```
-
-### Sistema de cuentas (avanzado)
-
-Para gestionar varias cuentas con failover automático, activa el sistema de cuentas:
-
-```env
-ACCOUNT_SYSTEM=true
-```
-
-En el primer arranque tus credenciales del `.env` se migran a `credentials.json` (una sola vez);
-a partir de ahí la gestión de cuentas es solo a través de ese fichero. Cuando una cuenta devuelve
-un error (429, 402), el gateway pasa a la siguiente; si una falla varias veces seguidas, la
-aparta temporalmente y comprueba periódicamente si se ha recuperado.
 
 ### VPN / proxy
 
@@ -187,6 +178,7 @@ VPN_PROXY_URL=http://127.0.0.1:7890     # HTTP
 
 | Variable | Por defecto | Descripción |
 |---|---|---|
+| `ACCOUNTS_CONFIG_FILE` | `credentials.json` | Ruta al array de cuentas |
 | `SERVER_HOST` / `SERVER_PORT` | `0.0.0.0` / `8000` | Interfaz y puerto de escucha |
 | `KIRO_REGION` / `KIRO_API_REGION` | `us-east-1` | Región de OIDC / de la API de Kiro |
 | `WEB_SEARCH_ENABLED` | `true` | Habilita la herramienta de búsqueda web |

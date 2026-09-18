@@ -643,7 +643,11 @@ sin éxito, se devuelve 503 con el mensaje del último error.
 `api_region`. Si `path` apunta a un directorio, se escanea sin recursión. Un JSON es válido si
 contiene `refreshToken` o `clientId`; una SQLite lo es si tiene la tabla `auth_kv`. El
 identificador de cuenta es la ruta absoluta resuelta, o
-`refresh_token_{sha256(token)[:16]}` para las de tipo `refresh_token`.
+`refresh_token_{sha256(token)[:16]}` para las de tipo `refresh_token`. El fichero de cuentas lo
+nombra `ACCOUNTS_CONFIG_FILE` (por defecto `credentials.json`). **Nota de implementación:** el port
+implementa SOLO este descubrimiento; no porta el modo de cuenta única del original
+(`REFRESH_TOKEN`/`KIRO_CREDS_FILE`/`KIRO_CLI_DB_FILE` sueltos como fuente de cuenta) ni el gateo por
+`ACCOUNT_SYSTEM` de la tabla §7.2, que queda inerte. Ver docs/DIFFERENCES.md §10.
 
 **Persistencia de `state.json`.** Escritura a fichero temporal y `os.Rename`. Sobre Windows esto
 **sí funciona**: `os.Rename` de Go usa `MoveFileEx` con reemplazo. Lo que puede fallar de forma

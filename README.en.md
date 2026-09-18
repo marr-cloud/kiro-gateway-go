@@ -82,8 +82,8 @@ task build
 # or directly:
 go build -o kiro-gateway ./cmd/kiro-gateway
 
-# Configure credentials: create a .env file in the root with, at minimum,
-# REFRESH_TOKEN and PROXY_API_KEY (see the Configuration section)
+# Configure credentials: a credentials.json with your accounts and a .env with
+# PROXY_API_KEY (see the Configuration section)
 
 # Start the server
 ./kiro-gateway
@@ -97,7 +97,7 @@ The server is available at `http://localhost:8000`.
 ### With Docker
 
 ```bash
-# Create a .env in the root with REFRESH_TOKEN and PROXY_API_KEY (see Configuration)
+# Prepare credentials.json + a .env with PROXY_API_KEY (see Configuration)
 docker compose up -d
 docker compose logs -f
 curl http://localhost:8000/health
@@ -124,52 +124,45 @@ healthcheck uses the binary itself (`--health`). See [`Dockerfile`](Dockerfile) 
 
 ## Configuration
 
-Configuration is read from environment variables or a `.env` file in the working directory.
-**Always** protect your proxy with `PROXY_API_KEY`: it is the key clients use to connect.
+Two pieces: **`credentials.json`** defines the Kiro accounts; the **`.env`** holds the proxy key
+and behavior settings. **Always** protect your proxy with `PROXY_API_KEY`: it is the key clients
+use to connect.
 
-### Option 1: refresh token (`.env`)
+### Accounts: `credentials.json`
+
+The gateway loads accounts from a JSON array. By default it looks for `credentials.json` in the
+working directory; point elsewhere with `ACCOUNTS_CONFIG_FILE`. Each entry has a `type` (`json`,
+`sqlite` or `refresh_token`), `enabled: true`, and the matching path or token. See
+[`credentials.json.example`](credentials.json.example).
+
+```json
+[
+  { "type": "json",   "enabled": true, "path": "C:/Users/your-user/.aws/sso/cache/kiro-auth-token.json" },
+  { "type": "sqlite", "enabled": true, "path": "C:/Users/your-user/AppData/Local/kiro-cli/data.sqlite3" }
+]
+```
+
+- `json` — Kiro IDE / Enterprise token (valid if it contains `refreshToken` or `clientId`).
+- `sqlite` — kiro-cli database (valid if it has an `auth_kv` table).
+- `refresh_token` — a direct refresh token (`"refresh_token": "eyJ..."`, optional `profile_arn`).
+
+With multiple entries the gateway does automatic **failover**: when one returns an error (429, 402)
+it moves to the next; if one fails several times in a row it is set aside and periodically retried.
+With a single account there is no switching (the real Kiro error is returned).
+
+> The port does **not** implement the original's "single-account" mode (loose `REFRESH_TOKEN` /
+> `KIRO_CREDS_FILE` / `KIRO_CLI_DB_FILE` in `.env` as the account source): accounts are always
+> defined in `credentials.json`. See [docs/DIFFERENCES.md](docs/DIFFERENCES.md).
+
+### `.env`
 
 ```env
-# Required
-REFRESH_TOKEN="your_kiro_refresh_token"
-
 # Password to protect YOUR proxy (make up a secure string)
 PROXY_API_KEY="my-super-secret-password-123"
 
-# Optional
-PROFILE_ARN="arn:aws:codewhisperer:us-east-1:..."
-KIRO_REGION="us-east-1"
+# Optional: path to the accounts file (default: credentials.json in the cwd)
+ACCOUNTS_CONFIG_FILE=C:/Users/your-user/kiro/kiro-gateway/credentials.json
 ```
-
-### Option 2: JSON credentials file (Kiro IDE / Enterprise)
-
-```env
-KIRO_CREDS_FILE="~/.aws/sso/cache/kiro-auth-token.json"
-PROXY_API_KEY="my-super-secret-password-123"
-```
-
-The gateway auto-detects the authentication type (Kiro Desktop Auth vs. AWS SSO OIDC) from the
-file's contents. For AWS SSO accounts (Builder ID or corporate) `PROFILE_ARN` is **not needed**.
-
-### Option 3: kiro-cli SQLite database
-
-```env
-KIRO_CLI_DB_FILE="~/.local/share/kiro-cli/data.sqlite3"
-PROXY_API_KEY="my-super-secret-password-123"
-```
-
-### Account system (advanced)
-
-To manage multiple accounts with automatic failover, enable the account system:
-
-```env
-ACCOUNT_SYSTEM=true
-```
-
-On first startup your `.env` credentials are migrated to `credentials.json` (one time); after
-that, account management is only through that file. When an account returns an error (429, 402),
-the gateway moves to the next one; if an account fails several times in a row, it is temporarily
-set aside and periodically re-checked for recovery.
 
 ### VPN / proxy
 
@@ -184,6 +177,7 @@ VPN_PROXY_URL=http://127.0.0.1:7890     # HTTP
 
 | Variable | Default | Description |
 |---|---|---|
+| `ACCOUNTS_CONFIG_FILE` | `credentials.json` | Path to the accounts array |
 | `SERVER_HOST` / `SERVER_PORT` | `0.0.0.0` / `8000` | Listen interface and port |
 | `KIRO_REGION` / `KIRO_API_REGION` | `us-east-1` | OIDC / Kiro API region |
 | `WEB_SEARCH_ENABLED` | `true` | Enables the web search tool |
