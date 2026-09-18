@@ -40,6 +40,15 @@ func (m *Manager) GetNextAccount(model string, exclude map[string]struct{}) (*Ac
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	// Zero-account guard: with no accounts, the len==1 fast path is skipped,
+	// nextEnabledIdx returns (-1,nil), and the "last attempted" index below
+	// would compute (stickyIdx+len-1) % len — a divide-by-zero panic. Upstream
+	// get_next_account (account_manager.py:645-720) returns None for an empty
+	// account map; the Go idiom is the typed 503, same as the exhausted path.
+	if len(m.accounts) == 0 {
+		return nil, &ExhaustedAccountsError{LastMsg: "no accounts available"}
+	}
+
 	now := m.clock()
 
 	// Single-account mode: bypass circuit breaker, return the account
