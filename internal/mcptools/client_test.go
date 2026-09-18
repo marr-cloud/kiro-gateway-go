@@ -9,8 +9,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
+
+	"github.com/marr-cloud/kiro-gateway-go/internal/debuglogger"
+	"github.com/marr-cloud/kiro-gateway-go/internal/debugmiddleware"
 )
 
 // fakeTokenProvider satisface utils.TokenProvider para los tests de este
@@ -297,5 +303,62 @@ func TestCallKiroMCPAPI_AccessTokenError(t *testing.T) {
 	}
 	if results != nil {
 		t.Errorf("results = %v, want nil", results)
+	}
+}
+
+// TestCallKiroMCPAPI_DebugLoggingWritesRequestAndResponse verifies that when a
+// DebugLogger is present in ctx, CallKiroMCPAPI logs the MCP request and the
+// full MCP response via LogRawChunk with the [MCP REQUEST]/[MCP RESPONSE]
+// markers (mcp_tools.py:139-145,169-175). ModeAll writes immediately to disk.
+func TestCallKiroMCPAPI_DebugLoggingWritesRequestAndResponse(t *testing.T) {
+	inner := `{"results":[{"title":"T<>&"}],"totalResults":1}`
+	envelope := map[string]any{
+		"id":      "resp-1",
+		"jsonrpc": "2.0",
+		"result": map[string]any{
+			"content": []any{map[string]any{"type": "text", "text": inner}},
+			"isError": false,
+		},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(envelope)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	dl := debuglogger.New(debuglogger.ModeAll, dir)
+	ctx := dl.PrepareNewRequest(debugmiddleware.WithLogger(context.Background(), dl))
+
+	_, _, err := CallKiroMCPAPI(ctx, srv.URL, "golang <b>", fakeTokenProvider{token: "t"})
+	if err != nil {
+		t.Fatalf("CallKiroMCPAPI returned unexpected error: %v", err)
+	}
+
+	raw, rerr := os.ReadFile(filepath.Join(dir, "response_stream_raw.txt"))
+	if rerr != nil {
+		t.Fatalf("reading response_stream_raw.txt: %v", rerr)
+	}
+	got := string(raw)
+	for _, want := range []string{
+		"[MCP REQUEST]\n",
+		"[MCP RESPONSE]\n",
+		`"query": "golang <b>"`, // ensure_ascii=False: '<' '>' NOT HTML-escaped
+		`"id": "resp-1"`,        // response envelope re-dumped, key order preserved
+		`"isError": false`,
+		// mcp_tools.py:119: result.content[0].text is a JSON STRING, not a
+		// dict — mcp_tools.py:167-175 logs mcp_response as a whole (the
+		// dict from response.json()) WITHOUT re-parsing that nested string,
+		// so json.dumps(mcp_response, ...) re-emits "text"'s content
+		// verbatim (quotes escaped, no added whitespace inside the string).
+		// pyjson.Dumps(respBody) mirrors that: it treats the "text" value
+		// as an opaque JSON string too, so the inner totalResults:1 stays
+		// escaped and compact — it is NOT reformatted as `"totalResults": 1`
+		// the way a top-level key would be.
+		`\"totalResults\":1`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("response_stream_raw.txt missing %q; got:\n%s", want, got)
+		}
 	}
 }

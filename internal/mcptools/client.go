@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/marr-cloud/kiro-gateway-go/internal/debugmiddleware"
+	"github.com/marr-cloud/kiro-gateway-go/internal/pyjson"
 	"github.com/marr-cloud/kiro-gateway-go/internal/utils"
 )
 
@@ -165,6 +167,8 @@ func extractMCPResultText(result *mcpResult) (string, bool) {
 // del fallo disponible para quien la quiera loguear en vez de perderse en
 // un logger.error() interno.
 func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvider) (toolUseID string, results map[string]any, err error) {
+	logger := debugmiddleware.FromContext(ctx)
+
 	requestID := NewWebSearchRequestID()
 	mcpRequest := mcpRequestEnvelope{
 		ID:      requestID,
@@ -178,6 +182,15 @@ func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvi
 	body, err := json.Marshal(mcpRequest)
 	if err != nil {
 		return "", nil, fmt.Errorf("mcptools: serializando el request MCP: %w", err)
+	}
+
+	// Log MCP request (mcp_tools.py:139-145). pyjson.Dumps re-emits body with
+	// ensure_ascii=False (undoing encoding/json's HTML-escaping of <,>,&) and
+	// preserves key order; struct field order matches the upstream dict.
+	if logger != nil {
+		if reqDump, derr := pyjson.Dumps(body); derr == nil {
+			logger.LogRawChunk([]byte("[MCP REQUEST]\n" + reqDump))
+		}
 	}
 
 	token, err := tp.AccessToken(ctx)
@@ -217,6 +230,14 @@ func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvi
 	if err := json.Unmarshal(respBody, &envelope); err != nil {
 		// mcp_tools.py:197-199 (json.JSONDecodeError de response.json()).
 		return "", nil, fmt.Errorf("mcptools: la respuesta MCP no es JSON válido: %w", err)
+	}
+
+	// Log MCP response (mcp_tools.py:169-175). Re-dump the raw response bytes
+	// with ensure_ascii=False, order preserved.
+	if logger != nil {
+		if respDump, derr := pyjson.Dumps(respBody); derr == nil {
+			logger.LogRawChunk([]byte("[MCP RESPONSE]\n" + respDump))
+		}
 	}
 
 	if !isJSONAbsentOrNull(envelope.Error) {

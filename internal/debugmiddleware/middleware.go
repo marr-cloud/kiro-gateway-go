@@ -40,6 +40,13 @@ func FromContext(ctx context.Context) *debuglogger.DebugLogger {
 	return logger
 }
 
+// WithLogger devuelve un context con logger instalado bajo loggerCtxKey — la
+// misma clave que lee FromContext. Exportado para que llamadores fuera de este
+// paquete (p.ej. tests de mcptools) inyecten el logger igual que lo hace New.
+func WithLogger(ctx context.Context, logger *debuglogger.DebugLogger) context.Context {
+	return context.WithValue(ctx, loggerCtxKey{}, logger)
+}
+
 // New construye el middleware. Construye UN *debuglogger.DebugLogger
 // compartido dentro del closure devuelto (single-flight, replicando el
 // singleton de proceso `debug_logger` del original — ver
@@ -58,7 +65,7 @@ func New(cfg *config.Config) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), loggerCtxKey{}, logger)
+			ctx := WithLogger(r.Context(), logger)
 
 			if mode != debuglogger.ModeOff {
 				ctx = logger.PrepareNewRequest(ctx)
