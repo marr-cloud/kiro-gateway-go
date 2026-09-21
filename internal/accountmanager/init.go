@@ -6,8 +6,11 @@ package accountmanager
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -43,6 +46,14 @@ const initConcurrency = 4
 // (dynamic if the ListAvailableModels endpoint is available, static FALLBACK_MODELS
 // otherwise). Runs in parallel with a small concurrency limit to avoid hammering OIDC.
 func (m *Manager) Initialize(ctx context.Context) error {
+	// Carga el override de models.json (si existe) una sola vez, antes de
+	// arrancar las goroutines que lo leen en refreshAccountModels.
+	override, err := loadModelsOverride(m.cfg.ModelsConfigFile)
+	if err != nil {
+		return err
+	}
+	m.modelsOverride = override
+
 	m.mu.RLock()
 	accounts := m.accounts
 	m.mu.RUnlock()
@@ -105,6 +116,19 @@ func (m *Manager) refreshAccountModels(ctx context.Context, accountID string) er
 		return nil
 	}
 	m.mu.Unlock()
+
+	// Override de models.json: si está presente es la lista autoritativa para
+	// toda cuenta, corto-circuitando tanto el fetch dinámico como el fallback.
+	if len(m.modelsOverride) > 0 {
+		m.mu.Lock()
+		account.Models = ModelAccountList{
+			Models:   append([]string(nil), m.modelsOverride...),
+			LoadedAt: now,
+			TTL:      time.Duration(m.cfg.AccountCacheTTL) * time.Second,
+		}
+		m.mu.Unlock()
+		return nil
+	}
 
 	// Determine endpoint type via APIHost
 	apiHost := account.Auth.APIHost()
@@ -246,4 +270,26 @@ func (m *Manager) GetFirstAccount() *Account {
 		return m.accounts[0]
 	}
 	return nil
+}
+
+// loadModelsOverride lee un models.json opcional (array JSON de IDs de modelo)
+// nombrado por MODELS_CONFIG_FILE. Fichero ausente → nil (se usa la lista
+// estática fallbackModels). Presente pero malformado → error, para que el
+// arranque falle con un mensaje claro en vez de ignorarlo en silencio.
+func loadModelsOverride(path string) ([]string, error) {
+	if path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("accountmanager: leer models file %q: %w", path, err)
+	}
+	var models []string
+	if err := json.Unmarshal(data, &models); err != nil {
+		return nil, fmt.Errorf("accountmanager: parsear models file %q: %w", path, err)
+	}
+	return models, nil
 }

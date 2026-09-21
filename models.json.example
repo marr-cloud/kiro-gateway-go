@@ -1,0 +1,21 @@
+[
+  "auto",
+  "claude-opus-5",
+  "claude-opus-4.8",
+  "claude-opus-4.7",
+  "claude-opus-4.6",
+  "claude-opus-4.5",
+  "claude-sonnet-5",
+  "claude-sonnet-4.6",
+  "claude-sonnet-4.5",
+  "claude-sonnet-4",
+  "claude-haiku-4.5",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+  "deepseek-3.2",
+  "glm-5",
+  "minimax-m2.1",
+  "minimax-m2.5",
+  "qwen3-coder-next"
+]

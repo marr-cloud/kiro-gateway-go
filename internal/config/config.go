@@ -66,6 +66,7 @@ type Config struct {
 	KiroCLIDBFile                   string  // KIRO_CLI_DB_FILE (lectura cruda del .env)
 	SQLiteReadOnly                  bool    // SQLITE_READONLY
 	AccountsConfigFile              string  // ACCOUNTS_CONFIG_FILE
+	ModelsConfigFile                string  // MODELS_CONFIG_FILE (lista opcional de modelos para /v1/models)
 	AccountsStateFile               string  // ACCOUNTS_STATE_FILE
 	AccountRecoveryTimeout          int     // ACCOUNT_RECOVERY_TIMEOUT
 	AccountMaxBackoffMultiplier     int     // ACCOUNT_MAX_BACKOFF_MULTIPLIER
@@ -183,6 +184,7 @@ func Load(opts Options) (*Config, error) {
 		KiroAPIRegion:                   getString("KIRO_API_REGION", ""),
 		SQLiteReadOnly:                  getBool("SQLITE_READONLY", false),
 		AccountsConfigFile:              getString("ACCOUNTS_CONFIG_FILE", "credentials.json"),
+		ModelsConfigFile:                getString("MODELS_CONFIG_FILE", "models.json"),
 		AccountsStateFile:               getString("ACCOUNTS_STATE_FILE", "state.json"),
 		AccountRecoveryTimeout:          getInt("ACCOUNT_RECOVERY_TIMEOUT", 60),
 		AccountMaxBackoffMultiplier:     getInt("ACCOUNT_MAX_BACKOFF_MULTIPLIER", 1440),

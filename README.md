@@ -163,6 +163,22 @@ una sola cuenta no hay conmutación (se devuelve el error real de Kiro).
 > `KIRO_CREDS_FILE` / `KIRO_CLI_DB_FILE` sueltos en el `.env` como fuente de cuenta): las cuentas se
 > definen siempre en `credentials.json`. Ver [docs/DIFFERENCES.md](docs/DIFFERENCES.md).
 
+### Modelos: `models.json` (opcional)
+
+El endpoint runtime de Kiro **no expone descubrimiento dinámico de modelos**, así que `GET /v1/models`
+usa por defecto una lista estática que puede quedarse corta cuando Kiro añade modelos nuevos. Para
+que la lista refleje lo que hoy ofrece tu cuenta, crea un **`models.json`** (array JSON de IDs); si
+existe, es la lista autoritativa. Apunta a otra ruta con `MODELS_CONFIG_FILE`. Ver
+[`models.json.example`](models.json.example).
+
+```json
+["auto", "claude-opus-5", "claude-sonnet-5", "claude-opus-4.8", "claude-haiku-4.5"]
+```
+
+> **No hace falta listar un modelo para usarlo.** El gateway es *passthrough* ("gateway, not
+> gatekeeper"): puedes pedir cualquier `model` en tus peticiones y se pasa tal cual a Kiro, esté o no
+> en `/v1/models`. `models.json` solo controla lo que aparece en el **listado**.
+
 ### `.env`
 
 Copia [`.env.example`](.env.example) a `.env` y ajústalo. Lo mínimo es `PROXY_API_KEY`:
@@ -189,6 +205,7 @@ VPN_PROXY_URL=http://127.0.0.1:7890     # HTTP
 | Variable | Por defecto | Descripción |
 |---|---|---|
 | `ACCOUNTS_CONFIG_FILE` | `credentials.json` | Ruta al array de cuentas |
+| `MODELS_CONFIG_FILE` | `models.json` | Lista opcional de modelos para `/v1/models` (si el fichero existe) |
 | `SERVER_HOST` / `SERVER_PORT` | `0.0.0.0` / `8000` | Interfaz y puerto de escucha |
 | `KIRO_REGION` / `KIRO_API_REGION` | `us-east-1` | Región de OIDC / de la API de Kiro |
 | `WEB_SEARCH_ENABLED` | `true` | Habilita la herramienta de búsqueda web |

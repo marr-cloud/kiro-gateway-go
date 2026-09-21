@@ -4,11 +4,18 @@
 /dist/
 /bin/
 
+# Artefactos de release descargados para pruebas (zip/tar + carpeta extraida)
+/kiro-gateway_v*
+
 # Credenciales y estado en tiempo de ejecución: nunca se versionan
 .env
 credentials.json
 state.json
 debug_logs/
+
+# Lista de modelos opcional por-usuario (no secreta, pero es config local;
+# su ausencia = lista estática por defecto). El ejemplo sí se versiona.
+models.json
 
 # Entorno del generador de corpus
 tools/corpus/.venv/

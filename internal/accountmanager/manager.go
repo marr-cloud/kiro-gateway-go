@@ -52,6 +52,12 @@ type Manager struct {
 	// Cuando es nil, se usa la detección estándar (apiHost contiene "://runtime.").
 	// Usado para forzar tests a tomar la rama de old-endpoint en refreshAccountModels.
 	isRuntimeEndpointOverride func(apiHost string) bool
+
+	// modelsOverride es la lista de MODELS_CONFIG_FILE (models.json) si existe.
+	// Se carga una vez en Initialize (antes de arrancar las goroutines, así que
+	// las lecturas posteriores son seguras) y, si es no vacía, es la lista
+	// autoritativa de modelos para toda cuenta (corto-circuita fetch y fallback).
+	modelsOverride []string
 }
 
 // NewManager crea un nuevo Manager.

@@ -166,6 +166,27 @@ migración es crear un `credentials.json` con una entrada equivalente. Ver
 
 ---
 
+### 11. Lista de modelos configurable (`models.json`)
+
+**Qué cambia:** el port añade un fichero opcional `models.json` (nombrado por `MODELS_CONFIG_FILE`, por
+defecto `models.json` en el directorio de trabajo): un array JSON de IDs de modelo que, si existe, es la
+lista autoritativa que devuelve `GET /v1/models` (corto-circuita tanto el descubrimiento dinámico como
+la lista estática `fallbackModels`). Si el fichero no existe, el comportamiento es el de siempre (lista
+estática); si existe pero está malformado, el arranque falla con un error claro.
+
+**Por qué:** el endpoint runtime de Kiro (`runtime.*.kiro.dev`) no expone `ListAvailableModels` ("AWS
+limitation", replicado del upstream), así que la lista estática se queda obsoleta cuando Kiro publica
+modelos nuevos (p. ej. `claude-sonnet-5`, `claude-opus-4.8`, `gpt-5.6-*`). El upstream no ofrece forma
+de actualizarla sin recompilar. `models.json` deja al operador mantener la lista al día sin tocar el
+binario, sin acoplarse a un API que Kiro no expone.
+
+**Impacto:** ninguno por defecto (sin fichero, la lista es la misma que antes). El resolver del port ya
+es *passthrough* ("gateway, not gatekeeper"): un modelo no listado se pasa igualmente a Kiro, así que
+`models.json` solo afecta al **listado**, nunca a qué modelos se pueden **usar**. No es un límite de
+wire de conversaciones: no toca la paridad byte a byte.
+
+---
+
 ## Comportamientos del original que se replican a propósito
 
 El upstream tiene cinco comportamientos que son defectos o atajos, pero **se replican a propósito
