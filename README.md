@@ -193,7 +193,8 @@ VPN_PROXY_URL=http://127.0.0.1:7890     # HTTP
 | `KIRO_REGION` / `KIRO_API_REGION` | `us-east-1` | Región de OIDC / de la API de Kiro |
 | `WEB_SEARCH_ENABLED` | `true` | Habilita la herramienta de búsqueda web |
 | `TRUNCATION_RECOVERY` | `true` | Recuperación ante respuestas truncadas |
-| `DEBUG_MODE` | `off` | Modo de log de depuración (`off` / `errors` / `all`) |
+| `DEBUG_MODE` | `off` | Modo de log de depuración a ficheros (`off` / `errors` / `all`) |
+| `LOG_LEVEL` | `INFO` | Verbosidad del log de peticiones en stdout (`DEBUG` / `INFO` / `WARN` / `ERROR` / `OFF`) |
 
 ---
 

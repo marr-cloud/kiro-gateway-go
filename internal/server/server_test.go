@@ -111,7 +111,7 @@ func newTestServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatalf("httpclient.New: %v", err)
 	}
-	s := New(cfg, manager, client)
+	s := New(cfg, manager, client, nil)
 	s.startedAt = time.Now().Add(-5 * time.Second)
 	return s
 }
@@ -283,7 +283,7 @@ func TestMessages_EmptyConfiguredKey_NoHeader_Returns401(t *testing.T) {
 	if err != nil {
 		t.Fatalf("httpclient.New: %v", err)
 	}
-	s := New(cfg, manager, client)
+	s := New(cfg, manager, client, nil)
 	s.startedAt = time.Now()
 	s.anthropicMessages = func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK) // si auth pasara (bug), veríamos esto

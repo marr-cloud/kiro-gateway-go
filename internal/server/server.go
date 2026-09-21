@@ -39,6 +39,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -63,6 +64,7 @@ type Server struct {
 	cfg      *config.Config
 	accounts *accountmanager.Manager
 	http     *http.Server
+	logger   *slog.Logger // logging operativo por-petición; nil lo desactiva
 
 	mu        sync.RWMutex
 	startedAt time.Time
@@ -85,8 +87,10 @@ type Server struct {
 // New construye un Server listo para Start. accounts y client deben estar ya
 // inicializados por el llamador (LoadCredentials/Initialize corridos) — New
 // no hace I/O por sí mismo, igual que routesopenai.New/routesanthropic.New.
-func New(cfg *config.Config, accounts *accountmanager.Manager, client *httpclient.Client) *Server {
-	s := &Server{cfg: cfg, accounts: accounts}
+// logger es el logging operativo por-petición (LOG_LEVEL); nil lo desactiva
+// (lo usan los tests que no quieren ruido de log).
+func New(cfg *config.Config, accounts *accountmanager.Manager, client *httpclient.Client, logger *slog.Logger) *Server {
+	s := &Server{cfg: cfg, accounts: accounts, logger: logger}
 
 	// UNA sola *truncationstate.State compartida entre los dos dialectos
 	// (Task 8a/8b): el save de una petición (cualquier dialecto) y el
@@ -143,6 +147,9 @@ func (s *Server) buildHandler() http.Handler {
 	h = recoverMiddleware(h)
 	h = authMiddleware(s.cfg.ProxyAPIKey, h)
 	h = debugmiddleware.New(s.cfg)(h)
+	// logMiddleware por fuera de auth/recover para loguear el status final
+	// (incluidos 401 y 500), y por dentro de CORS para no loguear el preflight.
+	h = logMiddleware(s.logger, h)
 	h = corsMiddleware(h)
 	return h
 }
