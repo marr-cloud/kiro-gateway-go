@@ -70,7 +70,7 @@ Docker, el healthcheck funciona igual pero el comando cambia de `python -m httpx
 más, en vez de partir de `python:3.10-slim`.
 
 **Por qué:** es el objetivo central del port: un único binario autocontenido sin intérprete. La
-imagen resultante mide ~15 MB frente a ~150 MB del original.
+imagen resultante mide ~27 MB frente a ~150 MB del original.
 
 **Impacto:** cualquier flujo que dependiera de tener Python o herramientas del sistema
 disponibles dentro del contenedor (ejecutar scripts auxiliares, usar `pip`, etc.) deja de
@@ -116,9 +116,11 @@ trataría entonces.
 `\"`, `\\`, ...) dentro de valores entrecomillados que sí procesa `python-dotenv`. El port
 devuelve la cadena tal cual para todas las variables.
 
-**Por qué:** el port solo lee de `.env` dos rutas de credenciales (`KIRO_CREDS_FILE`,
-`KIRO_CLI_DB_FILE`), y en Windows esas rutas contienen backslashes que un intérprete de escapes
-convertiría en secuencias no deseadas. Leerlas en crudo es lo correcto para su único consumidor.
+**Por qué:** los valores de `.env` que importan aquí son rutas del sistema de ficheros
+(`ACCOUNTS_CONFIG_FILE` y, para el camino de cuenta única de `internal/auth`, `KIRO_CREDS_FILE` /
+`KIRO_CLI_DB_FILE` — ver §10); en Windows contienen backslashes que un intérprete de escapes
+convertiría en secuencias no deseadas. Leerlas en crudo es lo correcto para esos consumidores, y
+ninguna otra variable del port depende de expandir escapes.
 
 **Impacto:** no observable en el corpus: el grabador aborta si detecta un `.env` en el camino de
 búsqueda. Un usuario que pusiera escapes intencionados en su `.env` los vería literales; se

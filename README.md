@@ -108,8 +108,16 @@ La imagen es multi-stage sobre `distroless/static:nonroot` (~27 MB, sin shell, u
 su healthcheck usa el propio binario (`--health`). Ver [`Dockerfile`](Dockerfile) y
 [`docker-compose.yml`](docker-compose.yml).
 
-> Los binarios de release cross-platform están planificados pero **aún no disponibles**; por ahora
-> se compila desde el código o se usa Docker.
+También se publica una imagen multi-arch (linux amd64/arm64) en cada release:
+
+```bash
+docker pull ghcr.io/marr-cloud/kiro-gateway-go:latest
+```
+
+> **Binarios de release** para las cinco plataformas (Windows/Linux/macOS × amd64/arm64), con
+> `SHA256SUMS`, están disponibles en la
+> [página de Releases](https://github.com/marr-cloud/kiro-gateway-go/releases). Descarga el binario
+> de tu plataforma en lugar de compilar, si lo prefieres.
 
 ### Flags de línea de comandos
 
@@ -156,6 +164,8 @@ una sola cuenta no hay conmutación (se devuelve el error real de Kiro).
 > definen siempre en `credentials.json`. Ver [docs/DIFFERENCES.md](docs/DIFFERENCES.md).
 
 ### `.env`
+
+Copia [`.env.example`](.env.example) a `.env` y ajústalo. Lo mínimo es `PROXY_API_KEY`:
 
 ```env
 # Contraseña para proteger TU proxy (inventa una cadena segura)
