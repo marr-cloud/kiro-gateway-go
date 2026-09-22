@@ -19,11 +19,11 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/auth"
 )
 
-// fallbackModels is the static model catalog used when ListAvailableModels is
-// unavailable (runtime endpoint) or fetch fails (old endpoint).
+// fallbackModels is the static model catalog used when dynamic discovery fails
+// (management.<region>.kiro.dev en runtime, o qhost/ListAvailableModels en el
+// endpoint antiguo) o no hay override de models.json.
 //
-// TEMPORARY: replicated from upstream config.py:276-290; move to internal/modelresolver
-// in phase 6 per spec §6.12.
+// Replicated from upstream config.py:276-290.
 var fallbackModels = []string{
 	"auto",
 	"claude-sonnet-4",
@@ -98,7 +98,8 @@ func (m *Manager) Initialize(ctx context.Context) error {
 }
 
 // refreshAccountModels re-fetches the model list for one account if its TTL expired.
-// No-op against runtime endpoints (which don't expose ListAvailableModels).
+// Runtime endpoints se descubren dinámicamente vía management.<region>.kiro.dev
+// (con fallback estático); los antiguos, vía qhost/ListAvailableModels.
 func (m *Manager) refreshAccountModels(ctx context.Context, accountID string) error {
 	m.mu.Lock()
 	idx := m.findAccountIndexByID(accountID)
@@ -142,12 +143,17 @@ func (m *Manager) refreshAccountModels(ctx context.Context, accountID string) er
 	}
 
 	if isRuntime {
-		// Runtime endpoint: no ListAvailableModels available
+		// Descubrimiento dinámico vía management.<region>.kiro.dev (el endpoint
+		// que usa el Kiro CLI actual; ver DIFFERENCES §12). Se hace SIN el lock
+		// (es I/O). Si falla, cae a la lista estática — fallback elegante, nunca
+		// rompe el arranque.
+		models, err := m.listModelsFromManagement(ctx, account)
+		if err != nil || len(models) == 0 {
+			models = append([]string(nil), fallbackModels...)
+		}
+
 		m.mu.Lock()
 		defer m.mu.Unlock()
-
-		// Use static fallback list
-		models := append([]string(nil), fallbackModels...)
 		account.Models = ModelAccountList{
 			Models:   models,
 			LoadedAt: now,

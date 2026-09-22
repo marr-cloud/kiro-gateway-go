@@ -163,12 +163,14 @@ una sola cuenta no hay conmutación (se devuelve el error real de Kiro).
 > `KIRO_CREDS_FILE` / `KIRO_CLI_DB_FILE` sueltos en el `.env` como fuente de cuenta): las cuentas se
 > definen siempre en `credentials.json`. Ver [docs/DIFFERENCES.md](docs/DIFFERENCES.md).
 
-### Modelos: `models.json` (opcional)
+### Modelos: descubrimiento dinámico y `models.json` (override opcional)
 
-El endpoint runtime de Kiro **no expone descubrimiento dinámico de modelos**, así que `GET /v1/models`
-usa por defecto una lista estática que puede quedarse corta cuando Kiro añade modelos nuevos. Para
-que la lista refleje lo que hoy ofrece tu cuenta, crea un **`models.json`** (array JSON de IDs); si
-existe, es la lista autoritativa. Apunta a otra ruta con `MODELS_CONFIG_FILE`. Ver
+Por defecto, `GET /v1/models` **descubre los modelos dinámicamente** consultando tu cuenta de Kiro
+(igual que hace el propio Kiro CLI), así que la lista refleja lo que hoy tienes disponible sin tocar
+nada. Si el descubrimiento falla, cae a una lista estática incorporada.
+
+Para **fijar o filtrar** la lista, crea un **`models.json`** (array JSON de IDs); si existe, es la
+lista autoritativa y anula el descubrimiento. Apunta a otra ruta con `MODELS_CONFIG_FILE`. Ver
 [`models.json.example`](models.json.example).
 
 ```json

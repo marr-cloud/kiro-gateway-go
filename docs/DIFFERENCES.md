@@ -187,6 +187,29 @@ wire de conversaciones: no toca la paridad byte a byte.
 
 ---
 
+### 12. Descubrimiento dinámico de modelos (`management.<region>.kiro.dev`)
+
+**Qué cambia:** para las cuentas de endpoint runtime, el port descubre la lista de modelos
+dinámicamente llamando a `ListAvailableModels` contra `management.<region>.kiro.dev` (protocolo AWS
+JSON 1.0: `POST` con `X-Amz-Target: AmazonCodeWhispererService.ListAvailableModels`, `origin=KIRO_CLI`
+y el bearer token de la cuenta), en vez de servir siempre la lista estática. Es exactamente lo que hace
+el Kiro CLI actual. Si la llamada falla (auth, red, status≠200, parseo), cae a la lista estática; y un
+`models.json` (§11), si existe, tiene prioridad sobre ambos. Orden: **`models.json` > dinámico >
+estática**.
+
+**Por qué:** el upstream (fijado en `a5292ca`) y el antiguo `amazon-q-developer-cli` solo conocían
+`q.*.amazonaws.com/ListAvailableModels`, que el endpoint runtime NO expone ("AWS limitation"). Pero el
+Kiro CLI actual movió esa operación a un plano de control nuevo, `management.*.kiro.dev`, que el
+upstream desconoce. Consultarlo deja que `/v1/models` refleje los modelos reales de la cuenta (p. ej.
+`claude-opus-5`, `claude-sonnet-5`, `gpt-5.6-*`) sin mantenimiento manual. Se construye la petición a
+mano (no vía `httpclient.RequestWithRetry`, que fuerza el `X-Amz-Target` de `GenerateAssistantResponse`).
+
+**Impacto:** `/v1/models` pasa a reflejar la cuenta en vez de una lista fija; ninguno si el endpoint no
+responde (fallback). No es un límite de wire de conversaciones: no toca la paridad byte a byte. La
+respuesta también trae `tokenLimits{maxInputTokens,...}` (hoy sin consumir; ver el TODO de `200000`).
+
+---
+
 ## Comportamientos del original que se replican a propósito
 
 El upstream tiene cinco comportamientos que son defectos o atajos, pero **se replican a propósito

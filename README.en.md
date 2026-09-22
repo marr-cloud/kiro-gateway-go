@@ -162,12 +162,14 @@ With a single account there is no switching (the real Kiro error is returned).
 > `KIRO_CREDS_FILE` / `KIRO_CLI_DB_FILE` in `.env` as the account source): accounts are always
 > defined in `credentials.json`. See [docs/DIFFERENCES.md](docs/DIFFERENCES.md).
 
-### Models: `models.json` (optional)
+### Models: dynamic discovery and `models.json` (optional override)
 
-Kiro's runtime endpoint **does not expose dynamic model discovery**, so `GET /v1/models` defaults to a
-static list that can lag behind when Kiro adds new models. To make the list reflect what your account
-offers today, create a **`models.json`** (a JSON array of model IDs); if present, it is the
-authoritative list. Point elsewhere with `MODELS_CONFIG_FILE`. See
+By default, `GET /v1/models` **discovers models dynamically** by querying your Kiro account (the same
+way the Kiro CLI does), so the list reflects what you currently have available with no configuration.
+If discovery fails, it falls back to a built-in static list.
+
+To **pin or filter** the list, create a **`models.json`** (a JSON array of model IDs); if present, it
+is the authoritative list and overrides discovery. Point elsewhere with `MODELS_CONFIG_FILE`. See
 [`models.json.example`](models.json.example).
 
 ```json

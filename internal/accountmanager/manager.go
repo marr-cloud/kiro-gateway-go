@@ -58,6 +58,11 @@ type Manager struct {
 	// las lecturas posteriores son seguras) y, si es no vacía, es la lista
 	// autoritativa de modelos para toda cuenta (corto-circuita fetch y fallback).
 	modelsOverride []string
+
+	// managementURLOverride es una función inyectable para tests que reemplaza
+	// el URL base de management.<region>.kiro.dev (descubrimiento dinámico de
+	// modelos). Por defecto nil (se construye el host real).
+	managementURLOverride func(region string) string
 }
 
 // NewManager crea un nuevo Manager.
