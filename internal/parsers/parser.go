@@ -14,9 +14,11 @@ import (
 )
 
 // Event es un fragmento de stream ya parseado. Kind es "content", "usage",
-// "context_usage" o "refusal" (Kiro cortó la respuesta: stopReason
-// CONTENT_FILTERED, con el motivo en Value["stopDetails"]) para los eventos
-// que produce Feed, o "tool_call" para los
+// "context_usage", "refusal" (Kiro cortó la respuesta: stopReason
+// CONTENT_FILTERED, con el motivo en Value["stopDetails"]) o
+// "reasoning_text"/"reasoning_signature"/"reasoning_redacted" (razonamiento
+// nativo, Value["text"|"signature"|"redactedContent"]) para los eventos que
+// produce Feed, o "tool_call" para los
 // que produce Finish (ver su comentario). Raw es una copia de los bytes JSON
 // originales — no un slice del buffer interno, para que mutaciones
 // posteriores del buffer no lo corrompan (D5). Raw es nil para los eventos
@@ -37,8 +39,8 @@ type Event struct {
 
 // eventPattern empareja un prefijo JSON literal con el tipo de evento que
 // dispara. Port de AwsEventStreamParser.EVENT_PATTERNS
-// (.upstream/kiro/parsers.py:241-249) más los dos de metadataEvent (ver
-// abajo). Los 7 prefijos heredados son byte-exactos al
+// (.upstream/kiro/parsers.py:241-249) más los de metadataEvent y
+// reasoningContentEvent (ver abajo). Los 7 prefijos heredados son byte-exactos al
 // original; un error de transcripción aquí rompe todo lo que dependa de
 // este paquete.
 type eventPattern struct {
@@ -60,6 +62,11 @@ var eventPatterns = []eventPattern{
 	// que antes cuando era basura entre prefijos.
 	{`{"stopDetails":`, "metadata"},
 	{`{"stopReason":`, "metadata"},
+	// reasoningContentEvent: razonamiento nativo que se pide con
+	// additionalModelRequestFields (DIFFERENCES §18).
+	{`{"text":`, "reasoning_text"},
+	{`{"signature":`, "reasoning_signature"},
+	{`{"redactedContent":`, "reasoning_redacted"},
 }
 
 // Parser es el equivalente Go de AwsEventStreamParser
@@ -176,6 +183,8 @@ func (p *Parser) Feed(chunk []byte) []Event {
 			events = append(events, Event{Kind: "usage", Raw: rawCopy, Value: value})
 		case "context_usage":
 			events = append(events, Event{Kind: "context_usage", Raw: rawCopy, Value: value})
+		case "reasoning_text", "reasoning_signature", "reasoning_redacted":
+			events = append(events, Event{Kind: earliestKind, Raw: rawCopy, Value: value})
 		case "metadata":
 			if value["stopReason"] == "CONTENT_FILTERED" {
 				events = append(events, Event{Kind: "refusal", Raw: rawCopy, Value: value})

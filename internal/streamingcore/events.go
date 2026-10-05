@@ -19,13 +19,23 @@ type KiroEvent struct {
 	// "context_usage" - context window usage percentage
 	// "error" - truncation diagnosis or other error
 	// "refusal" - Kiro cut the response (stopReason CONTENT_FILTERED)
+	// "native_thinking" - Kiro's native reasoning text (reasoningContentEvent)
+	// "thinking_signature" - signature that closes a native reasoning block
+	// "redacted_thinking" - encrypted native reasoning (RedactedData)
 	Kind string
 
 	// Content holds text output (for Kind == "content")
 	Content string
 
-	// Thinking holds reasoning/thinking content (for Kind == "thinking")
+	// Thinking holds reasoning/thinking content (for Kind == "thinking" or
+	// "native_thinking")
 	Thinking string
+
+	// Signature holds the native reasoning signature (Kind == "thinking_signature").
+	Signature string
+
+	// RedactedData holds base64 encrypted reasoning (Kind == "redacted_thinking").
+	RedactedData string
 
 	// ToolUse holds tool/function call data (for Kind == "tool_use")
 	ToolUse *ToolUseData

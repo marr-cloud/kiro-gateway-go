@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
+	"github.com/marr-cloud/kiro-gateway-go/internal/modelcaps"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelresolver"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsopenai"
 )
@@ -224,7 +225,7 @@ func BuildKiroPayload(req *modelsopenai.ChatCompletionRequest, conversationID st
 	modelID := modelresolver.GetModelIDForKiro(req.Model, HiddenModels)
 	thinkingCfg := ExtractThinkingConfigFromOpenAI(req)
 
-	return converterscore.BuildKiroPayload(
+	result := converterscore.BuildKiroPayload(
 		unifiedMessages,
 		systemPrompt,
 		modelID,
@@ -233,4 +234,19 @@ func BuildKiroPayload(req *modelsopenai.ChatCompletionRequest, conversationID st
 		profileArn,
 		thinkingCfg,
 	)
+	converterscore.AddNativeReasoningFields(result.Payload, modelID, nativeReasoningRequest(req))
+	return result
+}
+
+// nativeReasoningRequest traduce reasoning_effort al razonamiento nativo de
+// Kiro: "none" lo desactiva y el resto lo activa (adaptive) con ese nivel de
+// esfuerzo (DIFFERENCES §18).
+func nativeReasoningRequest(req *modelsopenai.ChatCompletionRequest) modelcaps.Request {
+	if req.ReasoningEffort == nil {
+		return modelcaps.Request{}
+	}
+	if *req.ReasoningEffort == "none" {
+		return modelcaps.Request{Thinking: "disabled", Effort: "none"}
+	}
+	return modelcaps.Request{Thinking: "adaptive", Effort: *req.ReasoningEffort}
 }

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
+	"github.com/marr-cloud/kiro-gateway-go/internal/modelcaps"
 )
 
 // fakeManagementServer devuelve las páginas dadas y valida la forma de la
@@ -134,5 +135,33 @@ func TestRuntimeBranchFallsBackOnError(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("no cayó al fallback estático tras el 500: %v", got)
+	}
+}
+
+// El discovery registra en modelcaps el razonamiento nativo que declara cada
+// modelo (DIFFERENCES §18); los modelos sin esquema no se registran.
+func TestListModelsFromManagementRegistersCaps(t *testing.T) {
+	t.Cleanup(modelcaps.Reset)
+	modelcaps.Reset()
+	schema := json.RawMessage(`{"properties":{"thinking":{"properties":{"type":{"enum":["adaptive","disabled"]}}},"output_config":{"properties":{"effort":{"enum":["low","high"]}}}}}`)
+	srv := fakeManagementServer(t, []map[string]any{{
+		"models": []map[string]any{
+			{"modelId": "claude-sonnet-5", "additionalModelRequestFieldsSchema": schema},
+			{"modelId": "claude-sonnet-4.5"},
+		},
+	}})
+	defer srv.Close()
+
+	m, acc := newRuntimeManager(t, func(string) string { return srv.URL + "/" })
+	if _, err := m.listModelsFromManagement(context.Background(), acc); err != nil {
+		t.Fatalf("listModelsFromManagement: %v", err)
+	}
+
+	caps, ok := modelcaps.Get("claude-sonnet-5")
+	if !ok || caps.EffortPath != "output_config" || len(caps.ThinkingTypes) != 2 {
+		t.Errorf("caps de claude-sonnet-5 = %+v, %v", caps, ok)
+	}
+	if _, ok := modelcaps.Get("claude-sonnet-4.5"); ok {
+		t.Errorf("claude-sonnet-4.5 no tiene esquema y no debe registrarse")
 	}
 }

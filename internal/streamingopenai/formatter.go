@@ -97,7 +97,7 @@ func (f *Formatter) Handle(ev streamingcore.KiroEvent, w io.Writer) error {
 			return f.emitContentChunk(ev.Content, w)
 		}
 
-	case "thinking":
+	case "thinking", "native_thinking":
 		if ev.Thinking != "" {
 			f.fullThinkingContent += ev.Thinking
 			return f.emitThinkingChunk(ev.Thinking, w)

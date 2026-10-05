@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/marr-cloud/kiro-gateway-go/internal/modelcaps"
 )
 
 // managementModelsTimeout acota cada ciclo de descubrimiento (incluida la
@@ -71,7 +73,8 @@ func (m *Manager) listModelsFromManagement(ctx context.Context, account *Account
 }
 
 // fetchManagementModelsPage hace UNA petición ListAvailableModels y devuelve los
-// modelId de esa página más el nextToken (vacío si es la última).
+// modelId de esa página más el nextToken (vacío si es la última). Registra
+// además en modelcaps las capacidades de razonamiento de cada modelo.
 func fetchManagementModelsPage(ctx context.Context, client *http.Client, base, token, arn, nextToken string) (ids []string, next string, err error) {
 	q := url.Values{}
 	q.Set("origin", "KIRO_CLI")
@@ -110,7 +113,8 @@ func fetchManagementModelsPage(ctx context.Context, client *http.Client, base, t
 
 	var parsed struct {
 		Models []struct {
-			ModelID string `json:"modelId"`
+			ModelID string          `json:"modelId"`
+			Schema  json.RawMessage `json:"additionalModelRequestFieldsSchema"`
 		} `json:"models"`
 		NextToken string `json:"nextToken"`
 	}
@@ -121,6 +125,10 @@ func fetchManagementModelsPage(ctx context.Context, client *http.Client, base, t
 	for _, mdl := range parsed.Models {
 		if mdl.ModelID != "" {
 			ids = append(ids, mdl.ModelID)
+			// Razonamiento nativo que declara el modelo (DIFFERENCES §18).
+			if caps, ok := modelcaps.ParseSchema(mdl.Schema); ok {
+				modelcaps.Set(mdl.ModelID, caps)
+			}
 		}
 	}
 	return ids, parsed.NextToken, nil

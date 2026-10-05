@@ -17,6 +17,13 @@ type outThinkingBlock struct {
 	Signature string `json:"signature"`
 }
 
+// outRedactedThinkingBlock es el razonamiento nativo cifrado de Kiro
+// (DIFFERENCES §18).
+type outRedactedThinkingBlock struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+}
+
 type outTextBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
@@ -60,10 +67,11 @@ type messagesResponse struct {
 
 type blockAcc struct {
 	index     int
-	blockType string // "thinking" | "text" | "tool_use"
+	blockType string // "thinking" | "redacted_thinking" | "text" | "tool_use"
 	id        string
 	name      string
 	signature string
+	data      string          // redacted_thinking
 	text      strings.Builder // text_delta / thinking_delta
 	partial   strings.Builder // input_json_delta (JSON de input de tool_use)
 }
@@ -107,7 +115,7 @@ func collectResponse(sseBytes []byte, model string) messagesResponse {
 			if err := json.Unmarshal(ev.ContentBlock, &cb); err != nil {
 				continue
 			}
-			acc := &blockAcc{index: ev.Index, blockType: cb.Type, id: cb.ID, name: cb.Name, signature: cb.Signature}
+			acc := &blockAcc{index: ev.Index, blockType: cb.Type, id: cb.ID, name: cb.Name, signature: cb.Signature, data: cb.Data}
 			order = append(order, acc)
 			byIndex[ev.Index] = acc
 
@@ -125,6 +133,8 @@ func collectResponse(sseBytes []byte, model string) messagesResponse {
 				acc.text.WriteString(d.Text)
 			case "thinking_delta":
 				acc.text.WriteString(d.Thinking)
+			case "signature_delta":
+				acc.signature = d.Signature
 			case "input_json_delta":
 				acc.partial.WriteString(d.PartialJSON)
 			}
@@ -170,6 +180,8 @@ func buildContentBlocks(order []*blockAcc) []any {
 		switch acc.blockType {
 		case "thinking":
 			blocks = append(blocks, outThinkingBlock{Type: "thinking", Thinking: acc.text.String(), Signature: acc.signature})
+		case "redacted_thinking":
+			blocks = append(blocks, outRedactedThinkingBlock{Type: "redacted_thinking", Data: acc.data})
 		case "text":
 			blocks = append(blocks, outTextBlock{Type: "text", Text: acc.text.String()})
 		case "tool_use":
@@ -209,6 +221,7 @@ type contentBlockIn struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Signature string `json:"signature"`
+	Data      string `json:"data"`
 }
 
 type deltaIn struct {
@@ -216,6 +229,7 @@ type deltaIn struct {
 	Text        string `json:"text"`
 	Thinking    string `json:"thinking"`
 	PartialJSON string `json:"partial_json"`
+	Signature   string `json:"signature"`
 }
 
 type messageDeltaIn struct {

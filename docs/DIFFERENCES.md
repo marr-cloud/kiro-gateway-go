@@ -280,7 +280,8 @@ forma nativa sin mostrarlo (`claude-opus-4.8`, `gpt-5.6-*`, `minimax-*`), así q
 su razonamiento solo añade riesgo de rechazos para la cuenta.
 
 **Impacto:** los modelos fuera de la lista no devuelven bloque thinking. Un modelo nuevo de Kiro
-empieza sin inyección hasta que se añada a la lista.
+empieza sin inyección hasta que se añada a la lista. Los modelos con razonamiento nativo (§18) nunca
+reciben la inyección, estén o no en la lista.
 
 ---
 
@@ -300,6 +301,42 @@ respuesta terminada.
 
 **Impacto:** solo cambia el motivo de parada de las respuestas cortadas; el contenido parcial se
 entrega igual que antes.
+
+---
+
+### 18. Razonamiento nativo oficial de Kiro (`additionalModelRequestFields`)
+
+**Qué cambia:** el gateway usa el mismo mecanismo que el IDE de Kiro para el thinking real del modelo:
+
+- **Capacidades:** el discovery (§12) lee el `additionalModelRequestFieldsSchema` de cada modelo en
+  `ListAvailableModels`: qué valores de `thinking.type` acepta (`adaptive`, `disabled`,
+  `between_tools`), `thinking.display`, y el nivel de esfuerzo en `output_config.effort` (Claude) o
+  `reasoning.effort` (GPT).
+- **Petición:** en esos modelos, `thinking` y `output_config.effort` de `/v1/messages` (lo que manda
+  Claude Code) se envían a Kiro en `additionalModelRequestFields`, en el nivel superior de
+  `GenerateAssistantResponse`. `enabled` con `budget_tokens` se convierte en `adaptive`; un valor que el
+  esquema del modelo no admite se omite. Con el thinking desactivado, `xhigh`/`max` bajan al nivel más
+  alto restante, como hace el IDE. En `/v1/chat/completions`, `reasoning_effort` activa `adaptive` con
+  ese esfuerzo y `none` lo desactiva. Estos modelos nunca reciben fake reasoning (§16).
+- **Respuesta:** los `reasoningContentEvent` (`{"text":…}`, `{"signature":…}`, `{"redactedContent":…}`)
+  salen como bloques `thinking` con la firma real en un `signature_delta`, o `redacted_thinking`, en
+  `/v1/messages`, y como `reasoning_content` en `/v1/chat/completions` (sin firma ni contenido cifrado,
+  que OpenAI no modela). Sin texto de razonamiento (modelos que lo ocultan) se emite un bloque `thinking`
+  vacío con su firma. `FAKE_REASONING_HANDLING` se aplica igual que al fake reasoning.
+- **Historial:** los bloques `thinking` firmados y `redacted_thinking` de los mensajes del asistente del
+  turno actual (desde el último mensaje del usuario sin `tool_result`) vuelven a Kiro en
+  `assistantResponseMessage.reasoningContent`, como hace el IDE. Las firmas `sig_…` del fake reasoning
+  y los turnos anteriores no se envían: Kiro valida la firma y rechaza una que no reconoce
+  (`THINKING_SIGNATURE_INVALID`), y un turno anterior puede venir de otro modelo.
+
+**Por qué:** el fake reasoning pide al modelo que escriba su razonamiento en el texto, algo que los
+modelos con razonamiento nativo rechazan o ignoran (§16). El mecanismo oficial devuelve el razonamiento
+real, sin riesgo de cortes, y hace que el esfuerzo que elige el cliente (`/effort` en Claude Code)
+llegue al modelo.
+
+**Impacto:** los modelos con capacidades nativas devuelven bloques thinking reales en lugar de nada.
+Si el discovery no está disponible (lista estática o `models.json`), no hay capacidades registradas y
+todo funciona como antes, con el fake reasoning de §16.
 
 ---
 

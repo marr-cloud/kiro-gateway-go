@@ -86,6 +86,21 @@ func (p *Pipeline) Feed(chunk []byte) []KiroEvent {
 				}
 			}
 
+		case "reasoning_text":
+			if text, _ := parserEvent.Value["text"].(string); text != "" {
+				events = append(events, KiroEvent{Kind: "native_thinking", Thinking: text})
+			}
+
+		case "reasoning_signature":
+			if sig, _ := parserEvent.Value["signature"].(string); sig != "" {
+				events = append(events, KiroEvent{Kind: "thinking_signature", Signature: sig})
+			}
+
+		case "reasoning_redacted":
+			if data, _ := parserEvent.Value["redactedContent"].(string); data != "" {
+				events = append(events, KiroEvent{Kind: "redacted_thinking", RedactedData: data})
+			}
+
 		case "refusal":
 			events = append(events, KiroEvent{
 				Kind:    "refusal",

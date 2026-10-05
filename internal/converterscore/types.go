@@ -58,6 +58,10 @@ type UnifiedMessage struct {
 	ToolCalls   []map[string]any `json:"tool_calls,omitempty"`
 	ToolResults []map[string]any `json:"tool_results,omitempty"`
 	Images      []map[string]any `json:"images,omitempty"`
+	// ReasoningContent es el razonamiento nativo firmado de un mensaje del
+	// asistente, ya en forma Kiro ({"reasoningText":{...}} o
+	// {"redactedContent":...}). Sin equivalente en el original (DIFFERENCES §18).
+	ReasoningContent map[string]any `json:"reasoning_content,omitempty"`
 }
 
 // UnifiedTool es el formato de herramienta unificado, independiente de API.

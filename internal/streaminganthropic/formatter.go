@@ -171,6 +171,15 @@ func (f *Formatter) Handle(ev streamingcore.KiroEvent, w io.Writer) error {
 
 	case "refusal":
 		f.refused = true
+
+	case "native_thinking":
+		return f.handleNativeThinking(ev.Thinking, w)
+
+	case "thinking_signature":
+		return f.handleThinkingSignature(ev.Signature, w)
+
+	case "redacted_thinking":
+		return f.handleRedactedThinking(ev.RedactedData, w)
 	}
 
 	return nil

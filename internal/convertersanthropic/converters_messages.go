@@ -5,8 +5,10 @@ package convertersanthropic
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/converterscore"
+	"github.com/marr-cloud/kiro-gateway-go/internal/modelcaps"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelresolver"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsanthropic"
 )
@@ -285,8 +287,9 @@ func AnthropicToKiro(req *modelsanthropic.AnthropicMessagesRequest, conversation
 	modelID := modelresolver.GetModelIDForKiro(req.Model, HiddenModels)
 
 	thinkingCfg := ExtractThinkingConfigFromAnthropic(req)
+	attachNativeReasoning(req.Messages, unifiedMessages, modelID)
 
-	return converterscore.BuildKiroPayload(
+	result := converterscore.BuildKiroPayload(
 		unifiedMessages,
 		systemPrompt,
 		modelID,
@@ -295,4 +298,92 @@ func AnthropicToKiro(req *modelsanthropic.AnthropicMessagesRequest, conversation
 		profileArn,
 		thinkingCfg,
 	)
+	converterscore.AddNativeReasoningFields(result.Payload, modelID, nativeReasoningRequest(req))
+	return result
+}
+
+// attachNativeReasoning copia a unified (1:1 con msgs) el razonamiento
+// firmado de los mensajes del asistente del turno actual, para devolverlo a
+// Kiro en assistantResponseMessage.reasoningContent como hace el IDE
+// (DIFFERENCES §18). Solo si modelID tiene thinking nativo. El turno empieza
+// en el último mensaje del usuario sin tool_result: los razonamientos de
+// turnos anteriores pueden ser de otro modelo y Kiro no aceptaría su firma.
+// Las firmas "sig_" son las que inventa el fake reasoning.
+func attachNativeReasoning(msgs []modelsanthropic.AnthropicMessage, unified []converterscore.UnifiedMessage, modelID string) {
+	caps, ok := modelcaps.Get(modelID)
+	if !ok || len(caps.ThinkingTypes) == 0 || len(msgs) != len(unified) {
+		return
+	}
+	turnStart := 0
+	for i, msg := range msgs {
+		if msg.Role == "user" && !hasBlockType(msg.Content, "tool_result") {
+			turnStart = i
+		}
+	}
+	for i := turnStart; i < len(msgs); i++ {
+		if msgs[i].Role != "assistant" {
+			continue
+		}
+		for _, b := range msgs[i].Content {
+			if rc := kiroReasoningContent(b); rc != nil {
+				unified[i].ReasoningContent = rc
+				break
+			}
+		}
+	}
+}
+
+func hasBlockType(blocks []modelsanthropic.ContentBlock, typ string) bool {
+	for _, b := range blocks {
+		if b.Type == typ {
+			return true
+		}
+	}
+	return false
+}
+
+// kiroReasoningContent traduce un bloque thinking/redacted_thinking a la
+// forma reasoningContent de Kiro, o nil si no es razonamiento nativo firmado.
+func kiroReasoningContent(b modelsanthropic.ContentBlock) map[string]any {
+	switch b.Type {
+	case "thinking":
+		if b.Signature == nil || *b.Signature == "" || strings.HasPrefix(*b.Signature, "sig_") {
+			return nil
+		}
+		text := ""
+		if b.Thinking != nil {
+			text = *b.Thinking
+		}
+		return map[string]any{"reasoningText": map[string]any{"text": text, "signature": *b.Signature}}
+	case "redacted_thinking":
+		var raw struct {
+			Data string `json:"data"`
+		}
+		if json.Unmarshal(b.Raw, &raw) != nil || raw.Data == "" {
+			return nil
+		}
+		return map[string]any{"redactedContent": raw.Data}
+	}
+	return nil
+}
+
+// nativeReasoningRequest extrae thinking.type, thinking.display y
+// output_config.effort de la petición para el razonamiento nativo de Kiro
+// (DIFFERENCES §18).
+func nativeReasoningRequest(req *modelsanthropic.AnthropicMessagesRequest) modelcaps.Request {
+	var out modelcaps.Request
+	var thinking struct {
+		Type    string `json:"type"`
+		Display string `json:"display"`
+	}
+	if json.Unmarshal(req.Thinking, &thinking) == nil {
+		out.Thinking, out.Display = thinking.Type, thinking.Display
+	}
+	var outputConfig struct {
+		Effort string `json:"effort"`
+	}
+	if json.Unmarshal(req.OutputConfig, &outputConfig) == nil {
+		out.Effort = outputConfig.Effort
+	}
+	return out
 }

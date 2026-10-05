@@ -115,6 +115,9 @@ func MergeAdjacentMessages(msgs []UnifiedMessage) []UnifiedMessage {
 
 		merged[idx].Content = mergeContent(merged[idx].Content, msg.Content)
 
+		if msg.Role == "assistant" && merged[idx].ReasoningContent == nil {
+			merged[idx].ReasoningContent = msg.ReasoningContent
+		}
 		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
 			merged[idx].ToolCalls = append(append([]map[string]any{}, merged[idx].ToolCalls...), msg.ToolCalls...)
 		}

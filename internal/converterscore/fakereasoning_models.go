@@ -6,6 +6,7 @@ package converterscore
 import (
 	"strings"
 
+	"github.com/marr-cloud/kiro-gateway-go/internal/modelcaps"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelresolver"
 )
 
@@ -41,11 +42,29 @@ func fakeReasoningAppliesTo(modelID string) bool {
 	if !FakeReasoningEnabled {
 		return false
 	}
+	// Los modelos con razonamiento nativo usan el oficial (DIFFERENCES §18).
+	if _, native := modelcaps.Get(modelID); native {
+		return false
+	}
 	if FakeReasoningModels == nil {
 		return true
 	}
 	_, ok := FakeReasoningModels[fakeReasoningModelKey(modelID)]
 	return ok
+}
+
+// AddNativeReasoningFields añade a payload los additionalModelRequestFields
+// del razonamiento nativo de modelID, si el modelo lo admite y req pide algo
+// que su esquema acepta. Los manda el IDE de Kiro en el nivel superior de
+// GenerateAssistantResponse (DIFFERENCES §18).
+func AddNativeReasoningFields(payload map[string]any, modelID string, req modelcaps.Request) {
+	caps, ok := modelcaps.Get(modelID)
+	if !ok {
+		return
+	}
+	if fields := modelcaps.RequestFields(caps, req); fields != nil {
+		payload["additionalModelRequestFields"] = fields
+	}
 }
 
 func fakeReasoningModelKey(id string) string {

@@ -141,6 +141,9 @@ type AnthropicMessagesRequest struct {
 
 	// Extended thinking (parámetro oficial de Anthropic).
 	Thinking json.RawMessage `json:"thinking,omitempty"`
+	// OutputConfig lleva el nivel de esfuerzo ({"effort": "high"}) que
+	// manda Claude Code. Sin equivalente en el original (DIFFERENCES §18).
+	OutputConfig json.RawMessage `json:"output_config,omitempty"`
 
 	// Tools.
 	Tools      []AnthropicTool `json:"tools,omitempty"`

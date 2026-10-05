@@ -125,7 +125,8 @@ func parseFloat(raw string, isSet bool, def float64) (float64, error) {
 // claude-opus-5), los que razonan de forma nativa y reciben la petición de
 // volcar ese razonamiento en el texto (claude-opus-4.8, gpt-5.6-*,
 // minimax-*), y los que la ignoran (claude-opus-5.5, deepseek-3.2, glm-5).
-// Ver DIFFERENCES §16.
+// Ver DIFFERENCES §16. Los modelos con razonamiento nativo (§18) no la
+// reciben aunque estén aquí.
 var DefaultFakeReasoningModels = []string{
 	"claude-haiku-4.5",
 	"claude-sonnet-4", "claude-sonnet-4.5", "claude-sonnet-4.6", "claude-sonnet-5",

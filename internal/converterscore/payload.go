@@ -81,6 +81,9 @@ func BuildKiroHistory(msgs []UnifiedMessage, modelID string) []map[string]any {
 			if toolUses := ExtractToolUsesFromMessage(msg); len(toolUses) > 0 {
 				assistantResponse["toolUses"] = toolUses
 			}
+			if msg.ReasoningContent != nil {
+				assistantResponse["reasoningContent"] = msg.ReasoningContent
+			}
 
 			history = append(history, map[string]any{"assistantResponseMessage": assistantResponse})
 		}
