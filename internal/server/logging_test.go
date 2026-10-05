@@ -92,3 +92,27 @@ func TestLogMiddlewareNilIsNoop(t *testing.T) {
 		t.Errorf("el handler no se sirvió tal cual: called=%v code=%d", called, rec.Code)
 	}
 }
+
+// TestLogMiddlewareHealthAtDebug: /health se registra a DEBUG, no a INFO. El
+// mod de Claude Code hace un GET /health por paso y a INFO llenaba gateway.log.
+func TestLogMiddlewareHealthAtDebug(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	var info bytes.Buffer
+	h := logMiddleware(slog.New(slog.NewTextHandler(&info, &slog.HandlerOptions{Level: slog.LevelInfo})), ok)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/health", nil))
+	if info.Len() != 0 {
+		t.Errorf("/health no debe salir a nivel INFO; got: %s", info.String())
+	}
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+	if !strings.Contains(info.String(), "level=INFO") || !strings.Contains(info.String(), "path=/v1/models") {
+		t.Errorf("el resto de rutas sigue a INFO; got: %s", info.String())
+	}
+
+	var debug bytes.Buffer
+	h = logMiddleware(slog.New(slog.NewTextHandler(&debug, &slog.HandlerOptions{Level: slog.LevelDebug})), ok)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/health", nil))
+	if !strings.Contains(debug.String(), "level=DEBUG") || !strings.Contains(debug.String(), "path=/health") {
+		t.Errorf("/health debe salir a nivel DEBUG; got: %s", debug.String())
+	}
+}

@@ -372,6 +372,10 @@ respaldo por refusal. Ese respaldo sale de `refusalFallbackModels`, un campo de
 (§17) con el modelo que declara Kiro. No hace peticiones a Kiro: lee lo que guardó el discovery.
 Las rutas existentes no cambian.
 
+El log por petición registra `GET /health` a nivel DEBUG; el original, vía `uvicorn.access`, lo
+deja a INFO como cualquier otra ruta. El mod consulta `/health` en cada paso, y a INFO esas
+líneas ocupaban la mitad de `gateway.log` y de `/kiro logs`.
+
 ---
 
 ## Comportamientos del original que se replican a propósito

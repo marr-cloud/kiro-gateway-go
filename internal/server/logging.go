@@ -66,7 +66,13 @@ func logMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		logger.LogAttrs(r.Context(), slog.LevelInfo, "request",
+		// /health va a DEBUG: el mod de Claude Code lo consulta en cada paso y a
+		// INFO ocupaba media salida de gateway.log (y de /kiro logs).
+		level := slog.LevelInfo
+		if r.URL.Path == "/health" {
+			level = slog.LevelDebug
+		}
+		logger.LogAttrs(r.Context(), level, "request",
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", rec.status),
