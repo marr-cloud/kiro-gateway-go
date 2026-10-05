@@ -133,8 +133,9 @@ func highestUncapped(levels []string) string {
 }
 
 var (
-	mu       sync.RWMutex
-	registry = map[string]Caps{}
+	mu        sync.RWMutex
+	registry  = map[string]Caps{}
+	fallbacks = map[string]string{}
 )
 
 func key(modelID string) string {
@@ -157,9 +158,28 @@ func Get(modelID string) (Caps, bool) {
 	return c, ok
 }
 
+// SetRefusalFallback registra el modelo con el que Kiro manda reintentar
+// cuando modelID corta la respuesta (refusalFallbackModels de
+// ListAvailableModels). Lo lee GET /kiro/status para el mod de Claude Code
+// (DIFFERENCES §20).
+func SetRefusalFallback(modelID, fallback string) {
+	mu.Lock()
+	defer mu.Unlock()
+	fallbacks[key(modelID)] = fallback
+}
+
+// RefusalFallback devuelve el modelo de respaldo de modelID, o "" si Kiro no
+// declaró ninguno. Normaliza el id igual que Get.
+func RefusalFallback(modelID string) string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return fallbacks[key(modelID)]
+}
+
 // Reset vacía el registro (tests).
 func Reset() {
 	mu.Lock()
 	defer mu.Unlock()
 	registry = map[string]Caps{}
+	fallbacks = map[string]string{}
 }

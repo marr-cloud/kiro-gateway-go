@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -163,5 +164,44 @@ func TestListModelsFromManagementRegistersCaps(t *testing.T) {
 	}
 	if _, ok := modelcaps.Get("claude-sonnet-4.5"); ok {
 		t.Errorf("claude-sonnet-4.5 no tiene esquema y no debe registrarse")
+	}
+}
+
+// El discovery registra el respaldo por refusal que declara Kiro
+// (refusalFallbackModels), con la forma real de la respuesta.
+func TestListModelsFromManagementRegistersRefusalFallback(t *testing.T) {
+	t.Cleanup(modelcaps.Reset)
+	modelcaps.Reset()
+	raw, err := os.ReadFile("testdata/list_available_models.json")
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(raw)
+	}))
+	defer srv.Close()
+
+	m, acc := newRuntimeManager(t, func(string) string { return srv.URL + "/" })
+	ids, err := m.listModelsFromManagement(context.Background(), acc)
+	if err != nil {
+		t.Fatalf("listModelsFromManagement: %v", err)
+	}
+	if len(ids) != 3 {
+		t.Fatalf("ids = %v, quiero 3", ids)
+	}
+	for model, want := range map[string]string{
+		"claude-sonnet-5.5": "claude-sonnet-5",
+		"claude-sonnet-5-5": "claude-sonnet-5", // id en forma de Claude Code
+		"claude-opus-5":     "claude-opus-4.8",
+		"claude-haiku-4.5":  "",
+	} {
+		if got := modelcaps.RefusalFallback(model); got != want {
+			t.Errorf("RefusalFallback(%q) = %q, quiero %q", model, got, want)
+		}
+	}
+	caps, ok := modelcaps.Get("claude-sonnet-5.5")
+	if !ok || len(caps.ThinkingTypes) != 2 || caps.ThinkingTypes[1] != "between_tools" {
+		t.Errorf("caps de claude-sonnet-5.5 = %+v, %v", caps, ok)
 	}
 }

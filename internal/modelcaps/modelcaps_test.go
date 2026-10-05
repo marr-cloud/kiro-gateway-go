@@ -95,3 +95,23 @@ func TestRegistryNormalizesIDs(t *testing.T) {
 		t.Errorf("Get(claude-sonnet-4.5) no debería existir")
 	}
 }
+
+// El respaldo por refusal se busca con el id normalizado, como Get.
+func TestRefusalFallback(t *testing.T) {
+	t.Cleanup(Reset)
+	Reset()
+	SetRefusalFallback("claude-sonnet-5.5", "claude-sonnet-5")
+
+	for _, id := range []string{"claude-sonnet-5.5", "claude-sonnet-5-5", "CLAUDE-SONNET-5.5"} {
+		if got := RefusalFallback(id); got != "claude-sonnet-5" {
+			t.Errorf("RefusalFallback(%q) = %q, quiero claude-sonnet-5", id, got)
+		}
+	}
+	if got := RefusalFallback("claude-haiku-4.5"); got != "" {
+		t.Errorf("modelo sin respaldo: %q, quiero vacío", got)
+	}
+	Reset()
+	if got := RefusalFallback("claude-sonnet-5.5"); got != "" {
+		t.Errorf("Reset no vació los respaldos: %q", got)
+	}
+}

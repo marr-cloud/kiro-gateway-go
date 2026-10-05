@@ -74,7 +74,7 @@ func (m *Manager) listModelsFromManagement(ctx context.Context, account *Account
 
 // fetchManagementModelsPage hace UNA petición ListAvailableModels y devuelve los
 // modelId de esa página más el nextToken (vacío si es la última). Registra
-// además en modelcaps las capacidades de razonamiento de cada modelo.
+// además en modelcaps las capacidades de razonamiento y el modelo de respaldo por refusal de cada modelo.
 func fetchManagementModelsPage(ctx context.Context, client *http.Client, base, token, arn, nextToken string) (ids []string, next string, err error) {
 	q := url.Values{}
 	q.Set("origin", "KIRO_CLI")
@@ -113,8 +113,11 @@ func fetchManagementModelsPage(ctx context.Context, client *http.Client, base, t
 
 	var parsed struct {
 		Models []struct {
-			ModelID string          `json:"modelId"`
-			Schema  json.RawMessage `json:"additionalModelRequestFieldsSchema"`
+			ModelID  string          `json:"modelId"`
+			Schema   json.RawMessage `json:"additionalModelRequestFieldsSchema"`
+			Fallback []struct {
+				ModelID string `json:"modelId"`
+			} `json:"refusalFallbackModels"`
 		} `json:"models"`
 		NextToken string `json:"nextToken"`
 	}
@@ -128,6 +131,11 @@ func fetchManagementModelsPage(ctx context.Context, client *http.Client, base, t
 			// Razonamiento nativo que declara el modelo (DIFFERENCES §18).
 			if caps, ok := modelcaps.ParseSchema(mdl.Schema); ok {
 				modelcaps.Set(mdl.ModelID, caps)
+			}
+			// Modelo con el que Kiro manda reintentar un corte (DIFFERENCES
+			// §20). Kiro declara uno; si algún día declara varios, vale el primero.
+			if len(mdl.Fallback) > 0 && mdl.Fallback[0].ModelID != "" {
+				modelcaps.SetRefusalFallback(mdl.ModelID, mdl.Fallback[0].ModelID)
 			}
 		}
 	}
