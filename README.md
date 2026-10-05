@@ -64,14 +64,46 @@ Modelos habituales en el plan gratuito: **Claude Sonnet 4.5**, **Claude Haiku 4.
 
 ## Inicio rápido
 
-### Requisitos
+Hace falta la sesión iniciada en una de estas fuentes de credenciales de Kiro:
+[Kiro CLI](https://kiro.dev/cli/) (AWS SSO: Builder ID gratuito o cuenta corporativa) o
+[Kiro IDE](https://kiro.dev/).
 
-- **Go 1.27+** (solo para compilar; el binario resultante no necesita nada instalado).
-- Una de estas fuentes de credenciales de Kiro:
-  - [Kiro IDE](https://kiro.dev/) con la sesión iniciada, o
-  - [Kiro CLI](https://kiro.dev/cli/) con AWS SSO (Builder ID gratuito o cuenta corporativa).
+### Windows + Claude Code, en una línea
+
+Con [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows)
+(`winget install Microsoft.PowerShell`) y [Claude Code](https://docs.claude.com/claude-code) instalados:
+
+```powershell
+irm https://raw.githubusercontent.com/marr-cloud/kiro-gateway-go/main/scripts/get.ps1 | iex
+kclaude   # en una terminal nueva de pwsh
+```
+
+[`scripts/get.ps1`](scripts/get.ps1) baja el zip de Windows de la última release, comprueba su
+SHA256, lo deja en `%LOCALAPPDATA%\Programs\kiro-gateway` y ejecuta
+[`scripts/install.ps1`](scripts/install.ps1), que:
+
+- crea `.env` con una `PROXY_API_KEY` aleatoria (no se muestra);
+- crea `credentials.json` con la cuenta que encuentre (kiro-cli; si no, Kiro IDE);
+- añade a tu `$PROFILE` una función `kclaude` entre dos marcas `# >>> kiro-gateway >>>`, o la
+  actualiza (si ya tienes un `kclaude` propio, no lo toca).
+
+Nunca pisa un `.env` ni un `credentials.json` existentes. Volver a ejecutar la línea **actualiza** a
+la última release y conserva tu configuración.
+
+Desde un clon es igual, compilando con Go 1.27+:
+
+```powershell
+git clone https://github.com/marr-cloud/kiro-gateway-go.git
+pwsh kiro-gateway-go/scripts/install.ps1   # -Build recompila tras un git pull
+kclaude
+```
+
+Después, ver [Con Claude Code](#con-claude-code-kclaude-y-kiro).
 
 ### Compilar y ejecutar
+
+Para otras plataformas o para usar el gateway sin Claude Code. Requiere **Go 1.27+** (solo para
+compilar; el binario resultante no necesita nada instalado).
 
 ```bash
 # Clona el repositorio
@@ -124,12 +156,9 @@ docker pull ghcr.io/marr-cloud/kiro-gateway-go:latest
 En Windows, `scripts/kiro-claude.ps1` arranca el gateway si no está corriendo y abre Claude Code
 apuntando a él, con el mod [`claude-mod/`](claude-mod) cargado. La key sale de `PROXY_API_KEY` en
 el `.env` y solo vive en el entorno de ese proceso. Hace falta PowerShell 7 (`pwsh`): el mod lo usa
-para lanzar `scripts/kiro-gateway.ps1`.
-
-```powershell
-Set-Alias kclaude C:\ruta\a\kiro-gateway\scripts\kiro-claude.ps1   # en tu $PROFILE
-kclaude
-```
+para lanzar `scripts/kiro-gateway.ps1`. `kclaude` es la función que deja
+[`scripts/install.ps1`](#windows--claude-code-en-una-línea) en tu `$PROFILE`; acepta los mismos
+argumentos que `claude` (`kclaude -p "hola"`, `kclaude --continue`).
 
 Cuando un modelo corta la respuesta, el mod reintenta con el modelo de respaldo que declara Kiro
 (por ejemplo `claude-sonnet-5.5 → claude-sonnet-5`) una vez por turno, y el resto del turno sigue

@@ -63,14 +63,35 @@ Models commonly available on the free tier: **Claude Sonnet 4.5**, **Claude Haik
 
 ## Quick start
 
-### Requirements
+You need an active session in one of these Kiro credential sources:
+[Kiro CLI](https://kiro.dev/cli/) (AWS SSO: free Builder ID or corporate account) or
+[Kiro IDE](https://kiro.dev/).
 
-- **Go 1.27+** (to build only; the resulting binary needs nothing installed).
-- One of these Kiro credential sources:
-  - [Kiro IDE](https://kiro.dev/) with an active session, or
-  - [Kiro CLI](https://kiro.dev/cli/) with AWS SSO (free Builder ID or corporate account).
+### Windows + Claude Code, in one line
+
+With [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows)
+(`winget install Microsoft.PowerShell`) and [Claude Code](https://docs.claude.com/claude-code) installed:
+
+```powershell
+irm https://raw.githubusercontent.com/marr-cloud/kiro-gateway-go/main/scripts/get.ps1 | iex
+kclaude   # in a new pwsh terminal
+```
+
+[`scripts/get.ps1`](scripts/get.ps1) downloads the latest Windows release zip, checks its SHA256,
+unpacks it into `%LOCALAPPDATA%\Programs\kiro-gateway` and runs
+[`scripts/install.ps1`](scripts/install.ps1), which creates `.env` (random `PROXY_API_KEY`) and
+`credentials.json` (the kiro-cli or Kiro IDE account it finds) if missing, and adds a `kclaude`
+function to your `$PROFILE`. Re-running the line upgrades to the latest release and keeps your
+configuration. From a clone: `pwsh scripts/install.ps1` (builds with Go 1.27+; `-Build` rebuilds).
+
+`kclaude` starts the gateway if needed and opens Claude Code against it with the
+[`claude-mod/`](claude-mod) mod loaded (refusal fallback, gateway relaunch, `/kiro`). Details in the
+Spanish README, section «Con Claude Code».
 
 ### Build and run
+
+For other platforms, or to use the gateway without Claude Code. Requires **Go 1.27+** (to build
+only; the resulting binary needs nothing installed).
 
 ```bash
 # Clone the repository
