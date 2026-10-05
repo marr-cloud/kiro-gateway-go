@@ -6,6 +6,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
@@ -26,6 +27,7 @@ var allEnvVars = []string{
 	"FIRST_TOKEN_MAX_RETRIES", "STREAMING_READ_TIMEOUT", "FAKE_REASONING",
 	"FAKE_REASONING_MAX_TOKENS", "FAKE_REASONING_BUDGET_CAP",
 	"FAKE_REASONING_HANDLING", "FAKE_REASONING_INITIAL_BUFFER_SIZE",
+	"FAKE_REASONING_MODELS",
 	"WEB_SEARCH_ENABLED", "AUTO_TRIM_PAYLOAD", "KIRO_MAX_PAYLOAD_BYTES",
 	"TOOL_DESCRIPTION_MAX_LENGTH", "TRUNCATION_RECOVERY", "LOG_LEVEL",
 	"DEBUG_MODE", "DEBUG_DIR",
@@ -297,3 +299,40 @@ func TestCredsPathFromDotenvIsNotUnescaped(t *testing.T) {
 		}
 	})
 }
+
+func TestFakeReasoningModels(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  *string
+		want []string
+	}{
+		{"sin poner usa la lista verificada", nil, config.DefaultFakeReasoningModels},
+		{"vacía usa la lista verificada", ptr(""), config.DefaultFakeReasoningModels},
+		{"asterisco son todos los modelos", ptr(" * "), nil},
+		{"lista propia", ptr(" claude-sonnet-4.5 , ,qwen3-coder-next"), []string{"claude-sonnet-4.5", "qwen3-coder-next"}},
+		{"lista sin entradas es ningún modelo", ptr(" , "), []string{}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			isolateEnv(t)
+			if c.raw != nil {
+				t.Setenv("FAKE_REASONING_MODELS", *c.raw)
+			}
+			cfg, err := config.Load(config.Options{})
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if !reflect.DeepEqual(cfg.FakeReasoningModels, c.want) {
+				t.Errorf("FakeReasoningModels = %#v, quiero %#v", cfg.FakeReasoningModels, c.want)
+			}
+		})
+	}
+	// Ningún modelo que corta con REASONING_EXTRACTION puede estar en el default.
+	for _, m := range config.DefaultFakeReasoningModels {
+		if m == "claude-sonnet-5.5" || m == "claude-opus-5" {
+			t.Errorf("%s no debe estar en DefaultFakeReasoningModels", m)
+		}
+	}
+}
+
+func ptr(s string) *string { return &s }

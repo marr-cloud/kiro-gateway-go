@@ -259,6 +259,31 @@ en el picker `/model` cuando el discovery de modelos del gateway está activo.
 
 ---
 
+### 16. Fake reasoning solo en una lista de modelos (`FAKE_REASONING_MODELS`)
+
+**Qué cambia:** la inyección de fake reasoning (la adición "Extended Thinking Mode" al system prompt y
+las etiquetas `<thinking_mode>`/`<max_thinking_length>`/`<thinking_instruction>` en el mensaje actual)
+solo se aplica a los modelos de `FAKE_REASONING_MODELS`. Por defecto es la lista verificada en vivo:
+`claude-haiku-4.5`, `claude-sonnet-4`, `claude-sonnet-4.5`, `claude-sonnet-4.6`, `claude-sonnet-5`,
+`claude-opus-4.5`, `claude-opus-4.6`, `claude-opus-4.7` y `qwen3-coder-next`. `*` restaura el
+comportamiento del original (todos los modelos). Los ids de la lista se normalizan como los de las
+peticiones (`claude-sonnet-4-5` equivale a `claude-sonnet-4.5`). `FAKE_REASONING=false` sigue
+desactivándolo para todos.
+
+**Por qué:** `claude-sonnet-5.5` y `claude-opus-5` razonan de forma nativa y su clasificador corta la
+respuesta con `stopReason: CONTENT_FILTERED` / `REASONING_EXTRACTION` cuando el prompt les pide volcar
+ese razonamiento en el texto (sonnet-5.5: 5 de 6 cortes sin `thinking` y 3 de 4 con `adaptive`, lo que
+manda Claude Code). En opus-5 basta la adición al system prompt, que el original añade incluso con
+`thinking: disabled`. Sin inyección, los dos responden bien siempre. El resto de modelos fuera de la
+lista no saca provecho: unos la ignoran (`claude-opus-5.5`, `deepseek-3.2`, `glm-5`) y otros razonan de
+forma nativa sin mostrarlo (`claude-opus-4.8`, `gpt-5.6-*`, `minimax-*`), así que pedirles que vuelquen
+su razonamiento solo añade riesgo de rechazos para la cuenta.
+
+**Impacto:** los modelos fuera de la lista no devuelven bloque thinking. Un modelo nuevo de Kiro
+empieza sin inyección hasta que se añada a la lista.
+
+---
+
 ## Comportamientos del original que se replican a propósito
 
 El upstream tiene cinco comportamientos que son defectos o atajos, pero **se replican a propósito

@@ -238,9 +238,18 @@ func BuildKiroPayload(
 		panic(err)
 	}
 
+	// Fuera de FakeReasoningModels no hay ni adición ni etiquetas
+	// (DIFFERENCES §16); dentro, todo sigue igual que en el original.
+	fakeReasoning := fakeReasoningAppliesTo(modelID)
+	if !fakeReasoning {
+		thinkingCfg.Enabled = false
+	}
+
 	fullSystemPrompt := systemPrompt
 	fullSystemPrompt = appendSystemPromptAddition(fullSystemPrompt, toolDocumentation)
-	fullSystemPrompt = appendSystemPromptAddition(fullSystemPrompt, GetThinkingSystemPromptAddition())
+	if fakeReasoning {
+		fullSystemPrompt = appendSystemPromptAddition(fullSystemPrompt, GetThinkingSystemPromptAddition())
+	}
 	fullSystemPrompt = appendSystemPromptAddition(fullSystemPrompt, GetTruncationRecoverySystemAddition())
 
 	var messagesWithAssistants []UnifiedMessage

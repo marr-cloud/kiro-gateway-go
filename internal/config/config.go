@@ -54,41 +54,42 @@ import (
 // orden de la tabla §7.2 del spec para que la diferencia entre struct y
 // tabla sea una línea por fila.
 type Config struct {
-	ProxyAPIKey                     string  // PROXY_API_KEY
-	ServerHost                      string  // SERVER_HOST
-	ServerPort                      int     // SERVER_PORT
-	VPNProxyURL                     string  // VPN_PROXY_URL
-	RefreshToken                    string  // REFRESH_TOKEN
-	ProfileARN                      string  // PROFILE_ARN
-	KiroRegion                      string  // KIRO_REGION
-	KiroAPIRegion                   string  // KIRO_API_REGION (sin default; "" = sin fijar)
-	KiroCredsFile                   string  // KIRO_CREDS_FILE (lectura cruda del .env)
-	KiroCLIDBFile                   string  // KIRO_CLI_DB_FILE (lectura cruda del .env)
-	SQLiteReadOnly                  bool    // SQLITE_READONLY
-	AccountsConfigFile              string  // ACCOUNTS_CONFIG_FILE
-	ModelsConfigFile                string  // MODELS_CONFIG_FILE (lista opcional de modelos para /v1/models)
-	AccountsStateFile               string  // ACCOUNTS_STATE_FILE
-	AccountRecoveryTimeout          int     // ACCOUNT_RECOVERY_TIMEOUT
-	AccountMaxBackoffMultiplier     int     // ACCOUNT_MAX_BACKOFF_MULTIPLIER
-	AccountProbabilisticRetryChance float64 // ACCOUNT_PROBABILISTIC_RETRY_CHANCE
-	AccountCacheTTL                 int     // ACCOUNT_CACHE_TTL
-	StateSaveIntervalSeconds        int     // STATE_SAVE_INTERVAL_SECONDS
-	FirstTokenTimeout               float64 // FIRST_TOKEN_TIMEOUT
-	FirstTokenMaxRetries            int     // FIRST_TOKEN_MAX_RETRIES
-	StreamingReadTimeout            float64 // STREAMING_READ_TIMEOUT
-	FakeReasoning                   bool    // FAKE_REASONING (lógica invertida)
-	FakeReasoningMaxTokens          int     // FAKE_REASONING_MAX_TOKENS
-	FakeReasoningBudgetCap          int     // FAKE_REASONING_BUDGET_CAP
-	FakeReasoningHandling           string  // FAKE_REASONING_HANDLING (enum)
-	FakeReasoningInitialBufferSize  int     // FAKE_REASONING_INITIAL_BUFFER_SIZE
-	WebSearchEnabled                bool    // WEB_SEARCH_ENABLED
-	AutoTrimPayload                 bool    // AUTO_TRIM_PAYLOAD
-	KiroMaxPayloadBytes             int     // KIRO_MAX_PAYLOAD_BYTES
-	ToolDescriptionMaxLength        int     // TOOL_DESCRIPTION_MAX_LENGTH
-	TruncationRecovery              bool    // TRUNCATION_RECOVERY
-	LogLevel                        string  // LOG_LEVEL (mayúsculas, sin validación)
-	DebugMode                       string  // DEBUG_MODE (enum, silent fallback)
-	DebugDir                        string  // DEBUG_DIR
+	ProxyAPIKey                     string   // PROXY_API_KEY
+	ServerHost                      string   // SERVER_HOST
+	ServerPort                      int      // SERVER_PORT
+	VPNProxyURL                     string   // VPN_PROXY_URL
+	RefreshToken                    string   // REFRESH_TOKEN
+	ProfileARN                      string   // PROFILE_ARN
+	KiroRegion                      string   // KIRO_REGION
+	KiroAPIRegion                   string   // KIRO_API_REGION (sin default; "" = sin fijar)
+	KiroCredsFile                   string   // KIRO_CREDS_FILE (lectura cruda del .env)
+	KiroCLIDBFile                   string   // KIRO_CLI_DB_FILE (lectura cruda del .env)
+	SQLiteReadOnly                  bool     // SQLITE_READONLY
+	AccountsConfigFile              string   // ACCOUNTS_CONFIG_FILE
+	ModelsConfigFile                string   // MODELS_CONFIG_FILE (lista opcional de modelos para /v1/models)
+	AccountsStateFile               string   // ACCOUNTS_STATE_FILE
+	AccountRecoveryTimeout          int      // ACCOUNT_RECOVERY_TIMEOUT
+	AccountMaxBackoffMultiplier     int      // ACCOUNT_MAX_BACKOFF_MULTIPLIER
+	AccountProbabilisticRetryChance float64  // ACCOUNT_PROBABILISTIC_RETRY_CHANCE
+	AccountCacheTTL                 int      // ACCOUNT_CACHE_TTL
+	StateSaveIntervalSeconds        int      // STATE_SAVE_INTERVAL_SECONDS
+	FirstTokenTimeout               float64  // FIRST_TOKEN_TIMEOUT
+	FirstTokenMaxRetries            int      // FIRST_TOKEN_MAX_RETRIES
+	StreamingReadTimeout            float64  // STREAMING_READ_TIMEOUT
+	FakeReasoning                   bool     // FAKE_REASONING (lógica invertida)
+	FakeReasoningMaxTokens          int      // FAKE_REASONING_MAX_TOKENS
+	FakeReasoningBudgetCap          int      // FAKE_REASONING_BUDGET_CAP
+	FakeReasoningHandling           string   // FAKE_REASONING_HANDLING (enum)
+	FakeReasoningInitialBufferSize  int      // FAKE_REASONING_INITIAL_BUFFER_SIZE
+	FakeReasoningModels             []string // FAKE_REASONING_MODELS (nil = todos)
+	WebSearchEnabled                bool     // WEB_SEARCH_ENABLED
+	AutoTrimPayload                 bool     // AUTO_TRIM_PAYLOAD
+	KiroMaxPayloadBytes             int      // KIRO_MAX_PAYLOAD_BYTES
+	ToolDescriptionMaxLength        int      // TOOL_DESCRIPTION_MAX_LENGTH
+	TruncationRecovery              bool     // TRUNCATION_RECOVERY
+	LogLevel                        string   // LOG_LEVEL (mayúsculas, sin validación)
+	DebugMode                       string   // DEBUG_MODE (enum, silent fallback)
+	DebugDir                        string   // DEBUG_DIR
 }
 
 // Options controla las entradas externas de Load. Host y Port vehiculan
@@ -220,6 +221,9 @@ func Load(opts Options) (*Config, error) {
 	// ambos casos activan el modo por defecto.
 	rawFR, _ := lookup("FAKE_REASONING")
 	cfg.FakeReasoning = parseBoolInverted(rawFR)
+
+	rawFRM, _ := lookup("FAKE_REASONING_MODELS")
+	cfg.FakeReasoningModels = parseFakeReasoningModels(rawFRM)
 
 	// Rutas: lectura cruda del .env con fallback al shell. No pasan por
 	// filepath.Clean para no arriesgar transformaciones espurias en

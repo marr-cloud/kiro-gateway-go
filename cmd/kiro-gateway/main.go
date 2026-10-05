@@ -218,6 +218,7 @@ func runServer(host string, port int, stdout, stderr io.Writer) int {
 	// Wire de las 7 package vars de converterscore (fase 3, config de
 	// módulo mutable a propósito — ver task-11-brief.md).
 	converterscore.FakeReasoningEnabled = cfg.FakeReasoning
+	converterscore.SetFakeReasoningModels(cfg.FakeReasoningModels)
 	converterscore.FakeReasoningMaxTokens = cfg.FakeReasoningMaxTokens
 	converterscore.FakeReasoningBudgetCap = cfg.FakeReasoningBudgetCap
 	converterscore.TruncationRecoveryEnabled = cfg.TruncationRecovery

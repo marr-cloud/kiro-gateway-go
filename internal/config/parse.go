@@ -118,3 +118,37 @@ func parseFloat(raw string, isSet bool, def float64) (float64, error) {
 	}
 	return n, nil
 }
+
+// DefaultFakeReasoningModels son los modelos en los que el fake reasoning se
+// verificó en vivo (2026-10-05): devuelven un bloque thinking sin rechazos.
+// Fuera quedan los que cortan con REASONING_EXTRACTION (claude-sonnet-5.5,
+// claude-opus-5), los que razonan de forma nativa y reciben la petición de
+// volcar ese razonamiento en el texto (claude-opus-4.8, gpt-5.6-*,
+// minimax-*), y los que la ignoran (claude-opus-5.5, deepseek-3.2, glm-5).
+// Ver DIFFERENCES §16.
+var DefaultFakeReasoningModels = []string{
+	"claude-haiku-4.5",
+	"claude-sonnet-4", "claude-sonnet-4.5", "claude-sonnet-4.6", "claude-sonnet-5",
+	"claude-opus-4.5", "claude-opus-4.6", "claude-opus-4.7",
+	"qwen3-coder-next",
+}
+
+// parseFakeReasoningModels interpreta FAKE_REASONING_MODELS: sin poner o
+// vacía → DefaultFakeReasoningModels; "*" → nil (todos los modelos, como el
+// original); si no, la lista separada por comas, sin entradas vacías.
+func parseFakeReasoningModels(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	switch raw {
+	case "":
+		return DefaultFakeReasoningModels
+	case "*":
+		return nil
+	}
+	ids := []string{} // no nil: una lista sin entradas válidas es "ningún modelo", no "todos"
+	for _, id := range strings.Split(raw, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
