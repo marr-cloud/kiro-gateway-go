@@ -62,7 +62,7 @@ func (f *Formatter) Finish(w io.Writer) error {
 	// there's text content, and no tool call happened (a tool call ending
 	// the stream is a normal completion signal, not truncation)
 	// (streaming_anthropic.py:609-614).
-	contentTruncated := !f.receivedContextUsage && len(f.fullContent) > 0 && f.toolBlockCount == 0
+	contentTruncated := f.ContentWasTruncated()
 
 	// output_tokens applies the Claude correction factor: count_tokens
 	// defaults apply_claude_correction=True, and this call site doesn't
@@ -71,6 +71,8 @@ func (f *Formatter) Finish(w io.Writer) error {
 
 	var stopReason string
 	switch {
+	case f.refused:
+		stopReason = "refusal"
 	case contentTruncated:
 		stopReason = "max_tokens"
 	case f.toolBlockCount > 0:
@@ -143,9 +145,10 @@ func (f *Formatter) FullContent() string {
 // ContentWasTruncated retorna true si la respuesta fue truncada por tamaño.
 // Espeja la lógica de streaming_anthropic.py:609-614:
 // content_was_truncated = not received_context_usage and len(full_content) > 0
-// and len(tool_blocks) == 0.
+// and len(tool_blocks) == 0. Un corte de Kiro (refused) nunca cuenta como
+// truncado (DIFFERENCES §17).
 func (f *Formatter) ContentWasTruncated() bool {
-	return !f.receivedContextUsage && len(f.fullContent) > 0 && f.toolBlockCount == 0
+	return !f.refused && !f.receivedContextUsage && len(f.fullContent) > 0 && f.toolBlockCount == 0
 }
 
 // EmitError writes the error SSE event upstream emits when an exception

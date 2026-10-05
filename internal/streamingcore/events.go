@@ -18,6 +18,7 @@ type KiroEvent struct {
 	// "usage" - token usage metrics
 	// "context_usage" - context window usage percentage
 	// "error" - truncation diagnosis or other error
+	// "refusal" - Kiro cut the response (stopReason CONTENT_FILTERED)
 	Kind string
 
 	// Content holds text output (for Kind == "content")
@@ -44,6 +45,17 @@ type KiroEvent struct {
 
 	// Error holds error/diagnosis message (for Kind == "error")
 	Error string
+
+	// Refusal holds why Kiro cut the response (for Kind == "refusal").
+	Refusal *RefusalInfo
+}
+
+// RefusalInfo is the stopDetails.refusal of a Kiro metadataEvent with
+// stopReason CONTENT_FILTERED, e.g. Category "REASONING_EXTRACTION". Either
+// field may be empty. Go-only addition (DIFFERENCES §17).
+type RefusalInfo struct {
+	Category    string
+	Explanation string
 }
 
 // ToolUseData represents a function call invocation within a KiroEvent.

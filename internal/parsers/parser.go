@@ -13,8 +13,10 @@ import (
 	"reflect"
 )
 
-// Event es un fragmento de stream ya parseado. Kind es "content", "usage" o
-// "context_usage" para los eventos que produce Feed, o "tool_call" para los
+// Event es un fragmento de stream ya parseado. Kind es "content", "usage",
+// "context_usage" o "refusal" (Kiro cortó la respuesta: stopReason
+// CONTENT_FILTERED, con el motivo en Value["stopDetails"]) para los eventos
+// que produce Feed, o "tool_call" para los
 // que produce Finish (ver su comentario). Raw es una copia de los bytes JSON
 // originales — no un slice del buffer interno, para que mutaciones
 // posteriores del buffer no lo corrompan (D5). Raw es nil para los eventos
@@ -35,7 +37,8 @@ type Event struct {
 
 // eventPattern empareja un prefijo JSON literal con el tipo de evento que
 // dispara. Port de AwsEventStreamParser.EVENT_PATTERNS
-// (.upstream/kiro/parsers.py:241-249). Los 7 prefijos son byte-exactos al
+// (.upstream/kiro/parsers.py:241-249) más los dos de metadataEvent (ver
+// abajo). Los 7 prefijos heredados son byte-exactos al
 // original; un error de transcripción aquí rompe todo lo que dependa de
 // este paquete.
 type eventPattern struct {
@@ -51,6 +54,12 @@ var eventPatterns = []eventPattern{
 	{`{"followupPrompt":`, "followup"},
 	{`{"usage":`, "usage"},
 	{`{"contextUsagePercentage":`, "context_usage"},
+	// metadataEvent de Kiro. Adición sin equivalente en el original
+	// (DIFFERENCES §17): solo CONTENT_FILTERED produce un evento "refusal";
+	// el resto (p.ej. {"stopReason":"END_TURN"}) se consume sin efecto, igual
+	// que antes cuando era basura entre prefijos.
+	{`{"stopDetails":`, "metadata"},
+	{`{"stopReason":`, "metadata"},
 }
 
 // Parser es el equivalente Go de AwsEventStreamParser
@@ -167,6 +176,10 @@ func (p *Parser) Feed(chunk []byte) []Event {
 			events = append(events, Event{Kind: "usage", Raw: rawCopy, Value: value})
 		case "context_usage":
 			events = append(events, Event{Kind: "context_usage", Raw: rawCopy, Value: value})
+		case "metadata":
+			if value["stopReason"] == "CONTENT_FILTERED" {
+				events = append(events, Event{Kind: "refusal", Raw: rawCopy, Value: value})
+			}
 		case "followup":
 			// _process_event no tiene rama 'followup': cuando
 			// {"followupPrompt": es el prefijo MÁS TEMPRANO (no solo una

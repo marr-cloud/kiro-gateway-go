@@ -46,11 +46,14 @@ func (f *Formatter) Finish(w io.Writer) error {
 	// Task 8b: Use allToolCalls (stream + bracket, deduped), not just toolCallsFromStream.
 	// This is the CORRECT computation that matches the Finish logic; store it for the
 	// accessor to return (streaming_openai.py:282-286).
-	contentTruncated := !streamCompletedNormally && len(f.fullContent) > 0 && len(allToolCalls) == 0
+	// A Kiro refusal is never a truncation (DIFFERENCES §17).
+	contentTruncated := !f.refused && !streamCompletedNormally && len(f.fullContent) > 0 && len(allToolCalls) == 0
 	f.contentWasTruncated = contentTruncated
 
 	var finishReason string
 	switch {
+	case f.refused:
+		finishReason = "content_filter"
 	case contentTruncated:
 		finishReason = "length"
 	case len(allToolCalls) > 0:

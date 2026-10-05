@@ -40,6 +40,7 @@ type Formatter struct {
 	contextUsagePercentage float64
 	thinkingHandling       ThinkingHandling
 	receivedContextUsage   bool              // upstream `received_context_usage`: a context_usage event arrived (streaming_core.py calculate loop)
+	refused                bool              // Kiro cut the response (CONTENT_FILTERED), DIFFERENCES §17
 	requestMessages        []json.RawMessage // request_messages fallback (streaming_openai.py:317-320)
 	requestTools           []json.RawMessage // request_tools fallback (streaming_openai.py:319-320)
 
@@ -129,6 +130,9 @@ func (f *Formatter) Handle(ev streamingcore.KiroEvent, w io.Writer) error {
 	case "context_usage":
 		f.contextUsagePercentage = ev.ContextUsage
 		f.receivedContextUsage = true
+
+	case "refusal":
+		f.refused = true
 	}
 
 	return nil

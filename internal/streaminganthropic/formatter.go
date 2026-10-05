@@ -54,6 +54,7 @@ type Formatter struct {
 	toolBlockCount      int // len(tool_blocks): drives stop_reason and truncation detection
 
 	receivedContextUsage     bool    // context_usage_percentage is not None (streaming_anthropic.py:527)
+	refused                  bool    // Kiro cortó la respuesta (CONTENT_FILTERED), DIFFERENCES §17
 	contextUsagePercentage   float64 // último valor visto; alimenta el override de input_tokens no-streaming (streaming_anthropic.py:809-816)
 	cacheReadInputTokens     *int
 	cacheCreationInputTokens *int
@@ -167,6 +168,9 @@ func (f *Formatter) Handle(ev streamingcore.KiroEvent, w io.Writer) error {
 
 	case "usage":
 		f.mergeCacheUsage(ev.UsageRaw)
+
+	case "refusal":
+		f.refused = true
 	}
 
 	return nil

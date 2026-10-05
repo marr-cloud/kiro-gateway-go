@@ -5,6 +5,7 @@ package streamingcore
 
 import (
 	"encoding/json"
+	"log/slog"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/parsers"
 	"github.com/marr-cloud/kiro-gateway-go/internal/thinkingparser"
@@ -84,6 +85,12 @@ func (p *Pipeline) Feed(chunk []byte) []KiroEvent {
 					})
 				}
 			}
+
+		case "refusal":
+			events = append(events, KiroEvent{
+				Kind:    "refusal",
+				Refusal: extractRefusal(parserEvent.Value),
+			})
 
 		case "tool_call":
 			// Build ToolUseData from tool call structure
@@ -228,4 +235,17 @@ func extractToolUseData(toolCallValue map[string]any) *ToolUseData {
 		TruncationDetected: truncationDetected,
 		TruncationInfo:     truncationInfo,
 	}
+}
+
+// extractRefusal reads stopDetails.refusal.{category,explanation} from a
+// metadataEvent and logs it: a refusal is otherwise invisible in the logs.
+func extractRefusal(value map[string]any) *RefusalInfo {
+	info := &RefusalInfo{}
+	details, _ := value["stopDetails"].(map[string]any)
+	if refusal, ok := details["refusal"].(map[string]any); ok {
+		info.Category, _ = refusal["category"].(string)
+		info.Explanation, _ = refusal["explanation"].(string)
+	}
+	slog.Warn("Kiro cut the response (CONTENT_FILTERED)", "category", info.Category, "explanation", info.Explanation)
+	return info
 }

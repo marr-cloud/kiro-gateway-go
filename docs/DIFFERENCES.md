@@ -284,6 +284,25 @@ empieza sin inyección hasta que se añada a la lista.
 
 ---
 
+### 17. Cortes de Kiro (`CONTENT_FILTERED`) visibles para el cliente
+
+**Qué cambia:** cuando Kiro corta la respuesta con un `metadataEvent`
+`{"stopDetails":{"refusal":{"category":…,"explanation":…}},"stopReason":"CONTENT_FILTERED"}`, el
+gateway termina con `stop_reason: "refusal"` en `/v1/messages` y `finish_reason: "content_filter"` en
+`/v1/chat/completions`, y registra un aviso con la categoría y la explicación. El parser reconoce dos
+prefijos más (`{"stopDetails":` y `{"stopReason":`); solo `CONTENT_FILTERED` produce un evento, así que
+un `{"stopReason":"END_TURN"}` se sigue descartando como antes. Un corte nunca se trata como truncado,
+así que no dispara la recuperación de truncación.
+
+**Por qué:** el original ignora el `metadataEvent` y devuelve un `end_turn`/`stop` normal con la
+respuesta vacía o cortada a la mitad, sin ningún aviso. El cliente no puede distinguir un corte de una
+respuesta terminada.
+
+**Impacto:** solo cambia el motivo de parada de las respuestas cortadas; el contenido parcial se
+entrega igual que antes.
+
+---
+
 ## Comportamientos del original que se replican a propósito
 
 El upstream tiene cinco comportamientos que son defectos o atajos, pero **se replican a propósito
@@ -293,7 +312,7 @@ permite que este port sea un reemplazo directo sin sorpresas. Corregirlos sería
 
 | Comportamiento | Descripción | Por qué se replica |
 |---|---|---|
-| **Parser oportunista del stream** | `parsers.py` no decodifica el framing binario de AWS event-stream: descarta bytes inválidos y rescata JSON buscando siete prefijos literales (`{"content":`, `{"name":`, `{"input":`, `{"stop":`, `{"followupPrompt":`, `{"usage":`, `{"contextUsagePercentage":`). No hay decoder real del protocolo ni siquiera detrás de un flag | Este atajo es el corazón del gateway. El stream de Kiro llega en un formato binario de AWS que el original nunca parseó correctamente, y funciona porque encuentra el JSON incrustado. Cambiarlo a un parser real corre el riesgo de divergir en casos borde que el parser oportunista ya maneja, y no hay forma de saber cuáles son sin romper cosas en producción |
+| **Parser oportunista del stream** | `parsers.py` no decodifica el framing binario de AWS event-stream: descarta bytes inválidos y rescata JSON buscando siete prefijos literales (`{"content":`, `{"name":`, `{"input":`, `{"stop":`, `{"followupPrompt":`, `{"usage":`, `{"contextUsagePercentage":`). No hay decoder real del protocolo ni siquiera detrás de un flag. El port solo añade los prefijos de `metadataEvent` (§17) | Este atajo es el corazón del gateway. El stream de Kiro llega en un formato binario de AWS que el original nunca parseó correctamente, y funciona porque encuentra el JSON incrustado. Cambiarlo a un parser real corre el riesgo de divergir en casos borde que el parser oportunista ya maneja, y no hay forma de saber cuáles son sin romper cosas en producción |
 | **Decodificación UTF-8 por chunk independiente** | Cada chunk del stream se decodifica de forma aislada con `chunk.decode('utf-8', errors='ignore')`. Si un carácter multibyte queda partido entre dos chunks, los bytes parciales se descartan y el carácter se corrompe. El port usa `bytes.ToValidUTF8(chunk, nil)` sin reensamblar runas | Es un defecto del original, pero cambiar el comportamiento alteraría los offsets en el buffer del parser, y con ello la secuencia de eventos emitidos. Los clientes nunca notaron el problema, lo que sugiere que Kiro no parte caracteres multibyte en la práctica. Arreglarlo es riesgo sin beneficio demostrado |
 | **Factor de corrección 1.15 del tokenizer** | El port usa el encoding BPE `cl100k_base` (de GPT-4) y multiplica el resultado por 1.15 para aproximar la tokenización real de Claude. La corrección se aplica con truncamiento hacia cero: `int(total * 1.15)` | El conteo de tokens alimenta el campo `usage` que ven los clientes. Cambiarlo rompería cualquier código que confíe en esos números. El factor 1.15 es una heurística del original; sin acceso al tokenizer real de Claude, es lo mejor disponible |
 | **`Connection: close` en streams** | El gateway añade la cabecera `Connection: close` en las peticiones de streaming hacia Kiro | Mitigación de fugas de sockets CLOSE_WAIT observadas en el despliegue del original. Quitarla podría reintroducir el problema |
