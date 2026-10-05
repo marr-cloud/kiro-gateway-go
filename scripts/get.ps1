@@ -44,10 +44,15 @@
         $line = ($sums -split "`n") | Where-Object { $_ -match "\s\*?$([regex]::Escape("$name.zip"))\s*$" } | Select-Object -First 1
         if (-not $line) { throw "SHA256SUMS de $tag no lista $name.zip." }
         $expected = ($line -split '\s+')[0].ToLower()
-        $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+        # .NET y no Get-FileHash/Expand-Archive: Windows PowerShell lanzado con el PSModulePath
+        # de pwsh 7 (p.ej. desde Git Bash) carga los modulos de pwsh y no los encuentra.
+        $sha = [Security.Cryptography.SHA256]::Create()
+        $fs = [IO.File]::OpenRead($zip)
+        try { $actual = -join ($sha.ComputeHash($fs) | ForEach-Object { $_.ToString('x2') }) } finally { $fs.Dispose(); $sha.Dispose() }
         if ($actual -ne $expected) { throw "El SHA256 de $name.zip no coincide con SHA256SUMS ($actual != $expected)." }
 
-        Expand-Archive $zip -DestinationPath $tmp -Force
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tmp)
         $src = Join-Path $tmp $name
 
         # Un gateway en marcha bloquea kiro-gateway.exe: se para y kclaude lo vuelve a arrancar.
