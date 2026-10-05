@@ -46,6 +46,14 @@ jobs:
           stage="kiro-gateway_${VERSION}_${GOOS}_${GOARCH}"
           mkdir -p "dist/${stage}"
           cp "${bin}" LICENSE NOTICE README.md README.en.md "dist/${stage}/"
+          if [ "${GOOS}" = "windows" ]; then
+            # Lo que necesitan kclaude y scripts/install.ps1, con la misma
+            # estructura que el repo (el mod busca ../scripts/kiro-gateway.ps1).
+            cp .env.example credentials.json.example models.json.example "dist/${stage}/"
+            mkdir -p "dist/${stage}/scripts" "dist/${stage}/claude-mod"
+            cp scripts/*.ps1 "dist/${stage}/scripts/"
+            cp -r claude-mod/.claude-plugin claude-mod/hooks "dist/${stage}/claude-mod/"
+          fi
           mkdir -p out
           if [ "${GOOS}" = "windows" ]; then
             (cd dist && zip -qr "../out/${stage}.zip" "${stage}")
