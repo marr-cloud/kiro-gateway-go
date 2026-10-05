@@ -277,12 +277,45 @@ func TestMessages_SingleAccountFatalNotServiceUnavailable(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
 		t.Fatalf("decode error: %v; body=%s", err, rec.Body.String())
 	}
+	// Divergencia intencional (DIFFERENCES §13): el desbordamiento de contexto
+	// sale con la forma de Anthropic para que Claude Code compacte solo.
+	if errResp.Error.Type != "invalid_request_error" {
+		t.Errorf("error.type = %q, want invalid_request_error", errResp.Error.Type)
+	}
+	const wantMessage = "prompt is too long: Model context limit reached. Conversation size exceeds model capacity. (capability_rejected: prompt_too_long)"
+	if errResp.Error.Message != wantMessage {
+		t.Errorf("error.message = %q, want %q", errResp.Error.Message, wantMessage)
+	}
+}
+
+// El resto de errores Fatal conservan el dialecto del original.
+func TestMessages_OtherFatalKeepsAPIError(t *testing.T) {
+	cfg := testConfig()
+	manager := newTestManager(t, cfg, []string{"tok-only"})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"message":"Bad thing","reason":"SOME_REASON"}`))
+	}))
+	defer server.Close()
+
+	h := newTestHandler(t, manager, cfg, server.URL)
+
+	rec := httptest.NewRecorder()
+	h.Messages(rec, newMessagesRequest(t, "claude-sonnet-4", false))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	var errResp anthropicError
+	if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("decode error: %v; body=%s", err, rec.Body.String())
+	}
 	if errResp.Error.Type != "api_error" {
 		t.Errorf("error.type = %q, want api_error", errResp.Error.Type)
 	}
-	const wantMessage = "Model context limit reached. Conversation size exceeds model capacity."
-	if errResp.Error.Message != wantMessage {
-		t.Errorf("error.message = %q, want %q (kiroerrors literal)", errResp.Error.Message, wantMessage)
+	if errResp.Error.Message != "Bad thing (reason: SOME_REASON)" {
+		t.Errorf("error.message = %q", errResp.Error.Message)
 	}
 }
 

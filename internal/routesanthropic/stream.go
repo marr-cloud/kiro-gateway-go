@@ -139,7 +139,16 @@ func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsanthropic.Ant
 	pipeline := h.newPipeline()
 	formatter := h.newFormatter(req)
 
+	// out es el destino del pipeline. Con un ResponseWriter que hace flush, se
+	// envuelve para compartirlo con el pinger (stream_ping.go).
+	var out io.Writer = w
 	flusher, _ := w.(http.Flusher)
+	if flusher != nil {
+		sw := &syncStreamWriter{w: w, flusher: flusher}
+		stopPinger := startPinger(sw, h.pingInterval)
+		defer stopPinger()
+		out, flusher = sw, sw
+	}
 	// Error a mitad de stream descartado a propósito (punto 4 de la cabecera
 	// de handler.go): la conexión ya está arrancada y el fallo probable es la
 	// desconexión del cliente. El error SÍ se captura (en lugar de
@@ -152,7 +161,7 @@ func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsanthropic.Ant
 	// streaming_anthropic.py:665-687 - nunca se alcanza en ese camino). Solo
 	// se sigue sin propagar el error al cliente (la respuesta ya está
 	// parcialmente escrita); lo único que cambia es que el SAVE se salta.
-	err := drivePipeline(resp.Body, pipeline, formatter, w, flusher)
+	err := drivePipeline(resp.Body, pipeline, formatter, out, flusher)
 
 	// Task 8b (SAVE side): persist truncation info after stream closes
 	// (streaming_anthropic.py:665-687). The gate is checked here, not in

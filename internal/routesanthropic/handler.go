@@ -59,6 +59,7 @@ package routesanthropic
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/config"
@@ -97,6 +98,10 @@ type Handler struct {
 	// no exportado que apiURL, para que websearch_test.go (mismo paquete)
 	// pueda apuntar al MCP falso de sus pruebas de Path A.
 	mcpHost func(acc *accountmanager.Account) string
+
+	// pingInterval es el intervalo entre pings SSE en streaming (ver
+	// stream_ping.go). Por defecto defaultPingInterval; los tests lo acortan.
+	pingInterval time.Duration
 }
 
 // New construye un Handler. accounts y client deben estar ya inicializados —
@@ -116,6 +121,7 @@ func New(accounts *accountmanager.Manager, client *httpclient.Client, cfg *confi
 		mcpHost: func(acc *accountmanager.Account) string {
 			return acc.Auth.QHost()
 		},
+		pingInterval: defaultPingInterval,
 	}
 }
 

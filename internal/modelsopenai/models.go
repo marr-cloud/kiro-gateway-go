@@ -53,6 +53,9 @@ type OpenAIModel struct {
 	Created     int64   `json:"created"`
 	OwnedBy     string  `json:"owned_by"` // por defecto en el original: "anthropic"
 	Description *string `json:"description,omitempty"`
+	// DisplayName no existe en el original: es el nombre que el picker /model
+	// de Claude Code muestra (DIFFERENCES §15). Los clientes OpenAI lo ignoran.
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 // ModelList es la lista de modelos en formato OpenAI: la respuesta completa

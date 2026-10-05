@@ -167,10 +167,23 @@ func (h *Handler) handleKiroError(w http.ResponseWriter, acc *accountmanager.Acc
 	classification := h.accounts.ReportFailure(acc.ID, model, resp.StatusCode, reason, userMessage)
 
 	if classification == accounterrors.Fatal {
+		if reason == accounterrors.ReasonContentLengthExceedsThreshold {
+			writePromptTooLong(w, userMessage)
+			return 0, "", true
+		}
 		writeAnthropicError(w, resp.StatusCode, "api_error", userMessage)
 		return 0, "", true
 	}
 	return resp.StatusCode, userMessage, false
+}
+
+// writePromptTooLong traduce el desbordamiento de contexto de Kiro al error de
+// Anthropic. Divergencia intencional con el original (DIFFERENCES §13): Claude
+// Code solo compacta la conversación de forma reactiva cuando reconoce "prompt
+// is too long" o el token estable "capability_rejected: prompt_too_long".
+func writePromptTooLong(w http.ResponseWriter, userMessage string) {
+	writeAnthropicError(w, http.StatusBadRequest, "invalid_request_error",
+		"prompt is too long: "+userMessage+" (capability_rejected: prompt_too_long)")
 }
 
 // parseKiroError decodifica el cuerpo de error de Kiro y lo enriquece vía

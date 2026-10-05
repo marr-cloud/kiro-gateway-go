@@ -210,6 +210,55 @@ respuesta también trae `tokenLimits{maxInputTokens,...}` (hoy sin consumir; ver
 
 ---
 
+Las secciones 13 a 15 adaptan el gateway a Claude Code usado como cliente (`ANTHROPIC_BASE_URL`; ver
+`scripts/kiro-claude.ps1`). Siguen el contrato de
+[code.claude.com/docs/en/llm-gateway-protocol](https://code.claude.com/docs/en/llm-gateway-protocol).
+
+### 13. Contexto excedido con la forma de error de Anthropic
+
+**Qué cambia:** en `/v1/messages`, cuando Kiro rechaza la petición con
+`reason: CONTENT_LENGTH_EXCEEDS_THRESHOLD`, el gateway responde `400` con `type: invalid_request_error`
+y el mensaje `prompt is too long: Model context limit reached. Conversation size exceeds model
+capacity. (capability_rejected: prompt_too_long)`. El original responde con el status de Kiro,
+`type: api_error` y solo el mensaje de `kiroerrors`. `/v1/chat/completions` no cambia.
+
+**Por qué:** Claude Code solo compacta la conversación de forma reactiva cuando reconoce un rechazo por
+prompt demasiado largo: el texto de Anthropic `prompt is too long` o el token estable
+`capability_rejected: prompt_too_long`. Con el error original, la sesión se queda atascada en el
+límite de contexto.
+
+**Impacto:** cambia el cuerpo de error de un único caso Fatal. `kiroerrors.Enhance` y su corpus golden
+no cambian; el resto de errores Fatal conservan la forma del original.
+
+---
+
+### 14. Eventos `ping` durante el streaming Anthropic
+
+**Qué cambia:** en `/v1/messages` con `stream: true`, después de `message_start`, el gateway emite
+`event: ping` / `data: {"type": "ping"}` cada 15 s hasta que el stream termina. El original define el
+evento pero nunca lo emite.
+
+**Por qué:** Claude Code aborta un stream cuando no recibe bytes durante su idle timeout (300 s por
+defecto), y Kiro puede callar más tiempo en un thinking largo. Los pings son los únicos bytes que
+mantienen viva la conexión en esa pausa.
+
+**Impacto:** hay eventos `ping` adicionales entre los demás eventos del stream; los clientes Anthropic
+los ignoran por contrato. La respuesta no-streaming no cambia.
+
+---
+
+### 15. `display_name` en `/v1/models`
+
+**Qué cambia:** cada entrada de `/v1/models` lleva `display_name`, derivado del id
+(`claude-sonnet-4.5` → `Claude Sonnet 4.5`, `gpt-5.6-luna` → `GPT 5.6 Luna`).
+
+**Por qué:** Claude Code no reconoce los ids con punto de Kiro y, sin `display_name`, los muestra crudos
+en el picker `/model` cuando el discovery de modelos del gateway está activo.
+
+**Impacto:** campo aditivo; los clientes OpenAI ignoran campos desconocidos.
+
+---
+
 ## Comportamientos del original que se replican a propósito
 
 El upstream tiene cinco comportamientos que son defectos o atajos, pero **se replican a propósito

@@ -92,3 +92,48 @@ func TestModels_HidesAutoShowsAlias(t *testing.T) {
 		t.Errorf("ids = %v, want %v (auto hidden, auto-kiro shown)", ids, want)
 	}
 }
+
+// --- Escenario 2: display_name para el picker de Claude Code (DIFFERENCES §15) ---
+
+func TestModels_DisplayName(t *testing.T) {
+	cfg := testConfig()
+	manager := newTestManager(t, cfg, []string{"tok-a"})
+	manager.Accounts()[0].Models.Models = []string{"claude-sonnet-4.5"}
+
+	h := New(manager, mustHTTPClient(t, cfg), cfg, truncationstate.New())
+	rec := httptest.NewRecorder()
+	h.Models(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+
+	var list modelsopenai.ModelList
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode response: %v; body=%s", err, rec.Body.String())
+	}
+	got := map[string]string{}
+	for _, m := range list.Data {
+		got[m.ID] = m.DisplayName
+	}
+	if got["claude-sonnet-4.5"] != "Claude Sonnet 4.5" {
+		t.Errorf("display_name(claude-sonnet-4.5) = %q, want %q", got["claude-sonnet-4.5"], "Claude Sonnet 4.5")
+	}
+	if got["auto-kiro"] != "Auto Kiro" {
+		t.Errorf("display_name(auto-kiro) = %q, want %q", got["auto-kiro"], "Auto Kiro")
+	}
+}
+
+func TestModelDisplayName(t *testing.T) {
+	cases := map[string]string{
+		"claude-opus-4.8":   "Claude Opus 4.8",
+		"claude-haiku-4.5":  "Claude Haiku 4.5",
+		"gpt-5.6-luna":      "GPT 5.6 Luna",
+		"glm-5":             "GLM 5",
+		"qwen3-coder-next":  "Qwen3 Coder Next",
+		"minimax-m2.1":      "Minimax M2.1",
+		"single":            "Single",
+		"claude--sonnet-4-": "Claude Sonnet 4",
+	}
+	for id, want := range cases {
+		if got := modelDisplayName(id); got != want {
+			t.Errorf("modelDisplayName(%q) = %q, want %q", id, got, want)
+		}
+	}
+}

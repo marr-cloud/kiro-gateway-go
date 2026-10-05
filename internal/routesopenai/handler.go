@@ -157,6 +157,7 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 			Created:     created,
 			OwnedBy:     "anthropic",
 			Description: &description,
+			DisplayName: modelDisplayName(id),
 		}
 	}
 
