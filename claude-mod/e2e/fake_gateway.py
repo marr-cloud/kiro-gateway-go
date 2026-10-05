@@ -2,16 +2,25 @@
 /v1/messages en SSE. claude-sonnet-5-5 corta con stop_reason "refusal"; el
 resto responde "ok". Registra en el log el modelo de cada /v1/messages.
 
-Resultado medido (Claude Code 2.1.289, con el hook de reintento):
-- el respaldo responde: 2 peticiones (original + respaldo).
-- todo corta (modo todo): 3 peticiones (original, respaldo y el reintento propio de CC,
-  que el hook ya no vuelve a reintentar). Sin la guarda eran 4.
+Resultado medido (Claude Code 2.1.289, con el hook de reintento; el respaldo se queda el
+resto del turno):
+- el respaldo responde: 2 peticiones (original + respaldo). Sin el mod, CC ya hace 2.
+- todo corta (modo todo): 3 peticiones (original, respaldo y el reintento propio de CC, que
+  el hook manda directo al respaldo sin volver a reintentar). Sin ninguna guarda eran 4.
 - corte a mitad (modo parcial): 2 peticiones; result "ok", pero el transcript conserva el
   mensaje "parcial " del intento cortado y a continuacion el "ok" del respaldo.
 
 Uso: uv run --no-project python fake_gateway.py <puerto> <log> [todo|parcial]
   todo: TODOS los modelos cortan con refusal.
   parcial: los que cortan emiten antes el texto "parcial " (corte a mitad, como CONTENT_FILTERED).
+
+Reproducir el e2e contra `claude` (Git Bash, desde claude-mod/e2e), con el gateway falso en
+otra terminal (`uv run --no-project python fake_gateway.py 8996 requests.log [todo|parcial]`):
+  ANTHROPIC_BASE_URL=http://127.0.0.1:8996 ANTHROPIC_AUTH_TOKEN=e2e-key ANTHROPIC_API_KEY= \\
+    CLAUDE_CODE_ATTRIBUTION_HEADER=0 claude -p "hola" --model claude-sonnet-5-5 \\
+    --plugin-dir "$(cd .. && pwd)" --output-format json > result.json
+requests.log lista un modelo por peticion; result.json trae is_error, result y stop_reason.
+Para el gateway falso al terminar (Ctrl+C).
 """
 import json
 import sys

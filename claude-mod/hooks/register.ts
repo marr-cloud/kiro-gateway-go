@@ -1,5 +1,6 @@
 // Mod `kiro`: hace que Claude Code sobre kiro-gateway no se corte.
-//  - Un refusal reintenta una vez con el modelo de respaldo que declara Kiro.
+//  - Un refusal reintenta con el modelo de respaldo que declara Kiro, una vez por turno;
+//    el resto de ese turno sigue con el respaldo.
 //  - Un gateway caído se relanza con scripts/kiro-gateway.ps1.
 //  - /kiro controla el gateway (estado, restart, logs, debug, models).
 // Fuera de un gateway local (ANTHROPIC_BASE_URL) queda inerte.
@@ -8,7 +9,7 @@ import { USAGE, fallbackMap, formatModels, formatStatus, localBase, modelKey, pa
 
 // Estado del módulo: un reload vuelve a lanzar session.start y lo rehace.
 // Los helpers viven a nivel de módulo: el cargador de hooks exige que toda función que reciba $ se declare ahí.
-const state = { base: '', port: '', token: '', fallbacks: new Map<string, string>(), retriedTurn: '' }
+const state = { base: '', port: '', token: '', fallbacks: new Map<string, string>(), rescued: new Map<string, string>() }
 
 const scriptPath = ($: EngineInterface) =>
   `${$.plugin.root.replace(/[\\/]\.claude-plugin[\\/]?$/, '')}/../scripts/kiro-gateway.ps1`
@@ -54,7 +55,7 @@ export const register: Register = on => {
     state.port = ''
     state.token = ''
     state.fallbacks = new Map()
-    state.retriedTurn = ''
+    state.rescued = new Map()
     const local = localBase(await $.env.get('ANTHROPIC_BASE_URL'))
     if (!local) return started
     state.base = local.base
@@ -78,6 +79,12 @@ export const register: Register = on => {
       if (r.ok) await fetchStatus($).catch(() => undefined)
     }
 
+    // Turno ya rescatado: el original volvería a cortar, así que el resto del turno va directo
+    // al respaldo, sin toast. Incluye el reintento propio de CC (mismo turnId, otro index).
+    // Si el respaldo también corta, el mod no reintenta más.
+    const sticky = state.rescued.get(e.turnId)
+    if (sticky) return yield* next({ ...e, model: sticky })
+
     // El motor real entrega el refusal en el chunk 'stop' y deja stopReason en null
     // en el resultado de next(); se mira en ambos sitios.
     const gen = next(e)
@@ -100,11 +107,9 @@ export const register: Register = on => {
       if (!done) await gen.return(undefined as never)
     }
     const fallback = state.fallbacks.get(modelKey(e.model))
-    if (!(refused || first.stopReason === 'refusal') || !fallback) return first
-    // Si el respaldo también corta, CC reintenta el paso por su cuenta (mismo turnId, otro index):
-    // un solo reintento por turno, para no gastar 4 peticiones de Kiro por un corte.
-    if (state.retriedTurn === e.turnId || next.signal.aborted) return first
-    state.retriedTurn = e.turnId
+    if (!(refused || first.stopReason === 'refusal') || !fallback || next.signal.aborted) return first
+    // Un Map por turnId y no un único hueco: los subagentes en paralelo intercalan turnos.
+    state.rescued.set(e.turnId, fallback)
     $.ui.toast(`${e.model} cortó → reintento con ${fallback}`, { timeoutMs: 8000 })
     return yield* next({ ...e, model: fallback })
   })

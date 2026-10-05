@@ -1,8 +1,8 @@
 import { describe, expect, test, type Engine } from 'claude-code/testing'
 import { start, world } from './world.ts'
 
-async function stepAll($: Engine, model: string, index = 0) {
-  const s = $.turn.step({ turnId: 't1', index, model, messageCount: 1 })
+async function stepAll($: Engine, model: string, index = 0, turnId = 't1') {
+  const s = $.turn.step({ turnId, index, model, messageCount: 1 })
   const chunks: { kind: string; stopReason?: string | null }[] = []
   // El motor de tests no rellena `s.result`: el resultado es el valor de retorno del iterador.
   for (;;) {
@@ -96,13 +96,51 @@ for (const stopOnlyInChunk of [false, true]) {
       expect(r.stopReason).toBe(stopOnlyInChunk ? null : 'refusal')
     })
 
-    test('el paso que Claude Code reintenta por su cuenta (mismo turno, otro index) no gasta otro respaldo', async ($, on) => {
+    test('el paso que Claude Code reintenta por su cuenta (mismo turno, otro index) va al respaldo sin gastar otro reintento', async ($, on) => {
       const w = world(on, { refuse: () => true, stopOnlyInChunk })
       await start($)
       await stepAll($, 'claude-sonnet-5-5', 0)
-      await stepAll($, 'claude-sonnet-5-5', 1)
-      expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5'])
+      const r = (await stepAll($, 'claude-sonnet-5-5', 1)).result
+      expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-5'])
       expect(w.toasts).toHaveLength(1)
+      expect(r.stopReason).toBe(stopOnlyInChunk ? null : 'refusal')
+    })
+
+    test('tras rescatar un paso, el resto del turno sigue con el respaldo', async ($, on) => {
+      const w = world(on, { stopOnlyInChunk })
+      await start($)
+      await stepAll($, 'claude-sonnet-5-5', 0)
+      const r = (await stepAll($, 'claude-sonnet-5-5', 1)).result
+      expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-5'])
+      expect(w.toasts).toEqual(['claude-sonnet-5-5 cortó → reintento con claude-sonnet-5'])
+      expect(r.answer).toBe('ok')
+    })
+
+    test('dos turnos intercalados (subagentes) guardan cada uno su respaldo', async ($, on) => {
+      const w = world(on, { stopOnlyInChunk })
+      await start($)
+      await stepAll($, 'claude-sonnet-5-5', 0, 't1')
+      await stepAll($, 'claude-sonnet-5-5', 0, 't2')
+      await stepAll($, 'claude-sonnet-5-5', 1, 't1')
+      await stepAll($, 'claude-sonnet-5-5', 1, 't2')
+      await stepAll($, 'claude-sonnet-5-5', 0, 't3') // turno sin cortes previos: empieza por el original
+      expect(w.steps).toEqual([
+        'claude-sonnet-5-5', 'claude-sonnet-5', // t1 paso 0: corta y se rescata
+        'claude-sonnet-5-5', 'claude-sonnet-5', // t2 paso 0: corta y se rescata
+        'claude-sonnet-5', 'claude-sonnet-5', // t1 y t2 paso 1: directos al respaldo
+        'claude-sonnet-5-5', 'claude-sonnet-5', // t3 paso 0
+      ])
+      expect(w.toasts).toHaveLength(3)
+    })
+
+    test('una sesión nueva olvida los turnos rescatados', async ($, on) => {
+      const w = world(on, { stopOnlyInChunk })
+      await start($)
+      await stepAll($, 'claude-sonnet-5-5', 0)
+      await start($)
+      await stepAll($, 'claude-sonnet-5-5', 1)
+      expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-sonnet-5'])
+      expect(w.toasts).toHaveLength(2)
     })
 
     test('sin respaldo no reintenta', async ($, on) => {
