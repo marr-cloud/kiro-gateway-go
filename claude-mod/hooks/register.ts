@@ -41,9 +41,9 @@ async function runScript($: EngineInterface, args: string[]): Promise<{ ok: bool
 const DEBUG_MODES = ['all', 'errors', 'off']
 
 function switchModel($: EngineInterface, id: string): void {
-  setTimeout(() => {
+  $.clock.after(0, () => {
     $.command.run({ command: 'model', args: id }).catch(err => $.ui.toast(`/model ${id} falló: ${String(err)}`))
-  }, 0)
+  })
 }
 
 export const register: Register = on => {
@@ -118,7 +118,7 @@ export const register: Register = on => {
             return { text: `${id} no está en la lista de Kiro. /kiro models para verla.` }
           }
           // El host rechaza un command.run anidado dentro de este hook (esperaría a su propio turno):
-          // se lanza en un macrotask, ya fuera del hook, y /model corre cuando la sesión queda libre.
+          // se lanza en un temporizador ($.clock.after), ya fuera del hook, y /model corre cuando la sesión queda libre.
           switchModel($, id)
           return { text: `Cambiando el modelo de la sesión a ${id}…` }
         }

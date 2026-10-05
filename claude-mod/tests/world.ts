@@ -43,6 +43,8 @@ export function world(on: On, opts: Partial<World> & { env?: Record<string, stri
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', ($, e) => { w.registered.push(e.name); return { value: { command: e.name } } })
   on('ui.toast', ($, e) => { w.toasts.push(e.text); return { value: undefined } })
+  // $.clock.after: el mundo resuelve la espera al instante y el motor corre el callback del mod.
+  on('clock.after', () => ({ value: undefined }))
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
   on('command.run', ($, e) => { w.commands.push({ command: e.command, args: e.args }); return { text: '' } })
   on('http.fetch', ($, e) => {
