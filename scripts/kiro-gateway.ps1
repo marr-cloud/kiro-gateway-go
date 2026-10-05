@@ -63,7 +63,11 @@ function Start-Gateway {
     New-Item -ItemType Directory -Force $logDir | Out-Null
     # El gateway lee .env y credentials.json del directorio de trabajo.
     $envPrefix = if ($DebugMode) { "set DEBUG_MODE=$DebugMode&& " } else { '' }
-    $cmd = "cmd.exe /d /c `"$envPrefix`"$exe`" --host 127.0.0.1 --port $Port > `"$log`" 2> `"$errLog`"`""
+    # Los logs se acumulan (>>): un relanzado no borra la causa de la caida.
+    # Cada arranque deja una cabecera para distinguirlos en `logs`.
+    $header = "== $((Get-Date).ToString('o')) arranque (DEBUG_MODE=$(if ($DebugMode) { $DebugMode } else { '.env' }))"
+    Add-Content -Path $log, $errLog -Value $header
+    $cmd = "cmd.exe /d /c `"$envPrefix`"$exe`" --host 127.0.0.1 --port $Port >> `"$log`" 2>> `"$errLog`"`""
     $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }
     $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
         CommandLine = $cmd; CurrentDirectory = $root; ProcessStartupInformation = $startup
