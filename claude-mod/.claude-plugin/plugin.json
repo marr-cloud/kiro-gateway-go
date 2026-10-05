@@ -1,0 +1,5 @@
+{
+  "name": "kiro",
+  "version": "0.1.0",
+  "description": "Recupera los cortes de Kiro, relanza kiro-gateway y añade /kiro."
+}

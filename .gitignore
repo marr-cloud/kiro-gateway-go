@@ -42,3 +42,8 @@ coverage.html
 
 # Copia temporal de la comprobacion de determinismo
 /.corpus-check/
+
+# Mod de Claude Code: tipos que escribe el motor al cargarlo y salidas del e2e
+claude-mod/.claude-plugin/types/
+claude-mod/e2e/*.log
+claude-mod/e2e/*.json
