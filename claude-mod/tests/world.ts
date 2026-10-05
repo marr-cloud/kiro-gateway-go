@@ -1,0 +1,70 @@
+// Mundo simulado bajo el mod para los tests: env, gateway (http.fetch),
+// script (process.run), toasts, modelo de la sesión y el modelo (turn.step).
+import { mock, type Engine } from 'claude-code/testing'
+import type { On } from 'claude-code'
+import type { Status } from '../hooks/kiro.ts'
+
+export const STATUS: Status = {
+  version: 'v-test',
+  uptime_seconds: 125,
+  active_account: 'acc1',
+  debug: { mode: 'off', dir: 'C:\\kg\\debug_logs' },
+  models: [
+    { id: 'claude-haiku-4.5', native_thinking: [], effort_levels: [], refusal_fallback: '' },
+    { id: 'claude-sonnet-5.5', native_thinking: ['adaptive'], effort_levels: ['low', 'high'], refusal_fallback: 'claude-sonnet-5' },
+  ],
+}
+
+export type World = {
+  healthy: boolean
+  statusCode: number
+  runExit: number
+  refuse: (model: string) => boolean
+  fetches: string[]
+  runs: string[][]
+  toasts: string[]
+  registered: string[]
+  steps: string[]
+  commands: { command: string; args: string }[]
+}
+
+const LOCAL_ENV = { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8000', ANTHROPIC_AUTH_TOKEN: 'k-test' }
+
+/** El mundo bajo el mod: env, gateway (fetch), script (process.run), toasts y modelo. */
+export function world(on: On, opts: Partial<World> & { env?: Record<string, string> } = {}): World {
+  const w: World = {
+    healthy: true, statusCode: 200, runExit: 0, refuse: m => m === 'claude-sonnet-5-5',
+    fetches: [], runs: [], toasts: [], registered: [], steps: [], commands: [], ...opts,
+  }
+  mock.env(on, opts.env ?? LOCAL_ENV)
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('command.register', ($, e) => { w.registered.push(e.name); return { value: { command: e.name } } })
+  on('ui.toast', ($, e) => { w.toasts.push(e.text); return { value: undefined } })
+  on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
+  on('command.run', ($, e) => { w.commands.push({ command: e.command, args: e.args }); return { text: '' } })
+  on('http.fetch', ($, e) => {
+    w.fetches.push(e.url)
+    if (!w.healthy) throw new Error('connect ECONNREFUSED 127.0.0.1:8000')
+    if (e.url.endsWith('/health')) return { value: { status: 200, ok: true, headers: {}, text: '{"status":"healthy"}' } }
+    if (e.url.endsWith('/kiro/status')) {
+      const ok = w.statusCode === 200
+      return { value: { status: w.statusCode, ok, headers: {}, text: ok ? JSON.stringify(STATUS) : '{"type":"error"}' } }
+    }
+    return { value: { status: 404, ok: false, headers: {}, text: '' } }
+  })
+  on('process.run', ($, e) => {
+    w.runs.push([...e.argv])
+    if (w.runExit === 0) w.healthy = true
+    const stdout = w.runExit === 0 ? 'kiro-gateway listo en http://127.0.0.1:8000' : 'error: No encuentro kiro-gateway.exe'
+    return { value: { exitCode: w.runExit, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('turn.step', async function* ($, e) {
+    w.steps.push(e.model)
+    return { turnId: e.turnId, index: e.index, answer: w.refuse(e.model) ? '' : 'ok', toolUses: [], stopReason: w.refuse(e.model) ? 'refusal' : 'end_turn', usage: null }
+  })
+  return w
+}
+
+export async function start($: Engine) {
+  await $.session.start({ cwd: 'C:/repo', surface: null, isInteractive: false })
+}

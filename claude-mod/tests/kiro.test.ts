@@ -33,12 +33,12 @@ describe('kiro.ts', () => {
   })
 
   test('formatStatus y formatModels', () => {
-    const st: Status = { version: 'v0.4.0', uptime_seconds: 3725, active_account: 'acc1', debug: { mode: 'errors', dir: 'C:\kg\debug_logs' }, models: MODELS }
+    const st: Status = { version: 'v0.4.0', uptime_seconds: 3725, active_account: 'acc1', debug: { mode: 'errors', dir: 'C:\\kg\\debug_logs' }, models: MODELS }
     const s = formatStatus(st, 'claude-sonnet-5-5')
     expect(s).toContain('kiro-gateway v0.4.0')
     expect(s).toContain('1 h 2 min')
     expect(s).toContain('acc1')
-    expect(s).toContain('errors (C:\kg\debug_logs)')
+    expect(s).toContain('errors (C:\\kg\\debug_logs)')
     expect(s).toContain('claude-sonnet-5-5')
     const t = formatModels(MODELS).split('\n')
     expect(t).toHaveLength(3)
