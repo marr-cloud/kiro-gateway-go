@@ -22,6 +22,8 @@ export type World = {
   refuse: (model: string) => boolean
   /** Como el motor real: el refusal viaja en el chunk 'stop' y el resultado trae stopReason null. */
   stopOnlyInChunk: boolean
+  /** Cuántas veces el turn.step del mundo recibió el cierre (return) desde arriba. */
+  closed: number
   fetches: string[]
   runs: string[][]
   toasts: string[]
@@ -36,7 +38,7 @@ const LOCAL_ENV = { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8000', ANTHROPIC_AUTH_
 /** El mundo bajo el mod: env, gateway (fetch), script (process.run), toasts y modelo. */
 export function world(on: On, opts: Partial<World> & { env?: Record<string, string> } = {}): World {
   const w: World = {
-    healthy: true, statusCode: 200, stopOnlyInChunk: false, runExit: 0, refuse: m => m === 'claude-sonnet-5-5',
+    healthy: true, statusCode: 200, stopOnlyInChunk: false, closed: 0, runExit: 0, refuse: m => m === 'claude-sonnet-5-5',
     fetches: [], runs: [], toasts: [], registered: [], steps: [], commands: [], debugMode: STATUS.debug.mode, ...opts,
   }
   // env vivo (no mock.env, que copia): un test puede cambiarlo entre dos session.start.
@@ -68,8 +70,12 @@ export function world(on: On, opts: Partial<World> & { env?: Record<string, stri
   on('turn.step', async function* ($, e) {
     w.steps.push(e.model)
     const stopReason = w.refuse(e.model) ? 'refusal' : 'end_turn'
-    if (w.stopOnlyInChunk) yield { kind: 'stop', stopReason, usage: null } as never
-    return { turnId: e.turnId, index: e.index, answer: w.refuse(e.model) ? '' : 'ok', toolUses: [], stopReason: w.stopOnlyInChunk ? null : stopReason, usage: null }
+    try {
+      if (w.stopOnlyInChunk) yield { kind: 'stop', stopReason, usage: null }
+      return { turnId: e.turnId, index: e.index, answer: w.refuse(e.model) ? '' : 'ok', toolUses: [], stopReason: w.stopOnlyInChunk ? null : stopReason, usage: null }
+    } finally {
+      w.closed++
+    }
   })
   return w
 }

@@ -1,13 +1,19 @@
 import { describe, expect, test, type Engine } from 'claude-code/testing'
 import { start, world } from './world.ts'
 
-async function step($: Engine, model: string) {
-  const s = $.turn.step({ turnId: 't1', index: 0, model, messageCount: 1 })
+async function stepAll($: Engine, model: string, index = 0) {
+  const s = $.turn.step({ turnId: 't1', index, model, messageCount: 1 })
+  const chunks: { kind: string; stopReason?: string | null }[] = []
   // El motor de tests no rellena `s.result`: el resultado es el valor de retorno del iterador.
   for (;;) {
     const it = await s.next()
-    if (it.done) return it.value
+    if (it.done) return { result: it.value, chunks }
+    chunks.push(it.value)
   }
+}
+
+async function step($: Engine, model: string) {
+  return (await stepAll($, model)).result
 }
 
 describe('arranque', () => {
@@ -69,38 +75,53 @@ describe('gateway caído', () => {
   })
 })
 
-describe('refusal', () => {
-  test('reintenta una vez con el respaldo de Kiro (id de Claude Code)', async ($, on) => {
-    const w = world(on)
-    await start($)
-    const r = await step($, 'claude-sonnet-5-5')
-    expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5'])
-    expect(w.toasts).toEqual(['claude-sonnet-5-5 cortó → reintento con claude-sonnet-5'])
-    expect(r.stopReason).toBe('end_turn')
-    expect(r.answer).toBe('ok')
-  })
+for (const stopOnlyInChunk of [false, true]) {
+  describe(`refusal (${stopOnlyInChunk ? 'motor real: refusal solo en el chunk stop' : 'refusal en el resultado'})`, () => {
+    test('reintenta una vez con el respaldo de Kiro (id de Claude Code)', async ($, on) => {
+      const w = world(on, { stopOnlyInChunk })
+      await start($)
+      const { result, chunks } = await stepAll($, 'claude-sonnet-5-5')
+      expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5'])
+      expect(w.toasts).toEqual(['claude-sonnet-5-5 cortó → reintento con claude-sonnet-5'])
+      expect(result.stopReason).toBe(stopOnlyInChunk ? null : 'end_turn')
+      expect(result.answer).toBe('ok')
+      if (stopOnlyInChunk) expect(chunks.at(-1)).toEqual({ kind: 'stop', stopReason: 'end_turn', usage: null })
+    })
 
-  test('detecta el refusal que solo viaja en el chunk stop (motor real)', async ($, on) => {
+    test('no reintenta dos veces si el respaldo también corta', async ($, on) => {
+      const w = world(on, { refuse: () => true, stopOnlyInChunk })
+      await start($)
+      const r = await step($, 'claude-sonnet-5-5')
+      expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5'])
+      expect(r.stopReason).toBe(stopOnlyInChunk ? null : 'refusal')
+    })
+
+    test('el paso que Claude Code reintenta por su cuenta (mismo turno, otro index) no gasta otro respaldo', async ($, on) => {
+      const w = world(on, { refuse: () => true, stopOnlyInChunk })
+      await start($)
+      await stepAll($, 'claude-sonnet-5-5', 0)
+      await stepAll($, 'claude-sonnet-5-5', 1)
+      expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5'])
+      expect(w.toasts).toHaveLength(1)
+    })
+
+    test('sin respaldo no reintenta', async ($, on) => {
+      const w = world(on, { refuse: () => true, stopOnlyInChunk })
+      await start($)
+      await step($, 'claude-haiku-4-5')
+      expect(w.steps).toEqual(['claude-haiku-4-5'])
+      expect(w.toasts).toEqual([])
+    })
+  })
+}
+
+describe('cierre del stream', () => {
+  test('cerrar el turn.step a mitad cierra también el de abajo', async ($, on) => {
     const w = world(on, { stopOnlyInChunk: true })
     await start($)
-    const r = await step($, 'claude-sonnet-5-5')
-    expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5'])
-    expect(r.answer).toBe('ok')
-  })
-
-  test('no reintenta dos veces si el respaldo también corta', async ($, on) => {
-    const w = world(on, { refuse: () => true })
-    await start($)
-    const r = await step($, 'claude-sonnet-5-5')
-    expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5'])
-    expect(r.stopReason).toBe('refusal')
-  })
-
-  test('sin respaldo no reintenta', async ($, on) => {
-    const w = world(on, { refuse: () => true })
-    await start($)
-    await step($, 'claude-haiku-4-5')
-    expect(w.steps).toEqual(['claude-haiku-4-5'])
-    expect(w.toasts).toEqual([])
+    const s = $.turn.step({ turnId: 't1', index: 0, model: 'claude-haiku-4-5', messageCount: 1 })
+    await s.next() // suspendido en el yield del chunk stop
+    await s.return(undefined as never)
+    expect(w.closed).toBe(1)
   })
 })

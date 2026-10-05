@@ -8,7 +8,7 @@ import { USAGE, fallbackMap, formatModels, formatStatus, localBase, modelKey, pa
 
 // Estado del módulo: un reload vuelve a lanzar session.start y lo rehace.
 // Los helpers viven a nivel de módulo: el cargador de hooks exige que toda función que reciba $ se declare ahí.
-const state = { base: '', port: '', token: '', fallbacks: new Map<string, string>() }
+const state = { base: '', port: '', token: '', fallbacks: new Map<string, string>(), retriedTurn: '' }
 
 const scriptPath = ($: EngineInterface) =>
   `${$.plugin.root.replace(/[\\/]\.claude-plugin[\\/]?$/, '')}/../scripts/kiro-gateway.ps1`
@@ -54,6 +54,7 @@ export const register: Register = on => {
     state.port = ''
     state.token = ''
     state.fallbacks = new Map()
+    state.retriedTurn = ''
     const local = localBase(await $.env.get('ANTHROPIC_BASE_URL'))
     if (!local) return started
     state.base = local.base
@@ -82,17 +83,28 @@ export const register: Register = on => {
     const gen = next(e)
     let refused = false
     let first
-    for (;;) {
-      const r = await gen.next()
-      if (r.done) {
-        first = r.value
-        break
+    let done = false
+    try {
+      for (;;) {
+        const r = await gen.next()
+        if (r.done) {
+          done = true
+          first = r.value
+          break
+        }
+        if (r.value.kind === 'stop' && r.value.stopReason === 'refusal') refused = true
+        yield r.value
       }
-      if (r.value.kind === 'stop' && r.value.stopReason === 'refusal') refused = true
-      yield r.value
+    } finally {
+      // yield* delegaba return()/throw(); el bucle manual debe cerrar el stream de abajo.
+      if (!done) await gen.return(undefined as never)
     }
     const fallback = state.fallbacks.get(modelKey(e.model))
     if (!(refused || first.stopReason === 'refusal') || !fallback) return first
+    // Si el respaldo también corta, CC reintenta el paso por su cuenta (mismo turnId, otro index):
+    // un solo reintento por turno, para no gastar 4 peticiones de Kiro por un corte.
+    if (state.retriedTurn === e.turnId || next.signal.aborted) return first
+    state.retriedTurn = e.turnId
     $.ui.toast(`${e.model} cortó → reintento con ${fallback}`, { timeoutMs: 8000 })
     return yield* next({ ...e, model: fallback })
   })
