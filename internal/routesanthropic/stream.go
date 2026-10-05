@@ -129,7 +129,9 @@ func drivePipeline(body io.Reader, pipeline *streamingcore.Pipeline, formatter *
 // Task 8b (SAVE side): después de cerrar el stream (formatter.Finish),
 // persiste la información de truncación en truncationstate si
 // ShouldInjectRecovery es true (routes_anthropic.py:665-687).
-func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsanthropic.AnthropicMessagesRequest, resp *http.Response) {
+// Devuelve el error de drivePipeline: no llega al cliente, solo decide el
+// volcado de DEBUG_MODE en attemptAccount.
+func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsanthropic.AnthropicMessagesRequest, resp *http.Response) error {
 	defer resp.Body.Close()
 
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -185,6 +187,7 @@ func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsanthropic.Ant
 			})
 		}
 	}
+	return err
 }
 
 // computeMessageHash computes the SHA256 hash of the first 500 characters
@@ -203,7 +206,7 @@ func computeMessageHash(content string) string {
 // respuesta Anthropic message a partir de esos bytes (collectResponse,
 // collect.go) — mismo diseño que routesopenai y que
 // collect_anthropic_response (streaming_anthropic.py:721-863).
-func (h *Handler) serveNonStreaming(w http.ResponseWriter, req *modelsanthropic.AnthropicMessagesRequest, resp *http.Response) {
+func (h *Handler) serveNonStreaming(w http.ResponseWriter, req *modelsanthropic.AnthropicMessagesRequest, resp *http.Response) error {
 	defer resp.Body.Close()
 
 	pipeline := h.newPipeline()
@@ -212,7 +215,7 @@ func (h *Handler) serveNonStreaming(w http.ResponseWriter, req *modelsanthropic.
 	var buf bytes.Buffer
 	if err := drivePipeline(resp.Body, pipeline, formatter, &buf, nil); err != nil {
 		writeAnthropicError(w, http.StatusInternalServerError, "api_error", "error reading Kiro stream: "+err.Error())
-		return
+		return err
 	}
 
 	out := collectResponse(buf.Bytes(), req.Model)
@@ -224,4 +227,5 @@ func (h *Handler) serveNonStreaming(w http.ResponseWriter, req *modelsanthropic.
 		out.Usage.InputTokens = v
 	}
 	writeJSON(w, http.StatusOK, out)
+	return nil
 }

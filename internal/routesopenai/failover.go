@@ -14,6 +14,8 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/accounterrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/convertersopenai"
+	"github.com/marr-cloud/kiro-gateway-go/internal/debuglogger"
+	"github.com/marr-cloud/kiro-gateway-go/internal/debugmiddleware"
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
 	"github.com/marr-cloud/kiro-gateway-go/internal/kiroerrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsopenai"
@@ -94,6 +96,7 @@ func (h *Handler) failoverChatCompletions(ctx context.Context, w http.ResponseWr
 // el status/mensaje para recordar en caso de agotamiento final; el llamador
 // debe excluir acc.ID y probar la siguiente cuenta.
 func (h *Handler) attemptAccount(ctx context.Context, w http.ResponseWriter, acc *accountmanager.Account, req *modelsopenai.ChatCompletionRequest) (status int, message string, done bool) {
+	dbg := debugmiddleware.FromContext(ctx)
 	conversationID := utils.GenerateConversationID(nil)
 
 	// profileArn es obligatorio para runtime.kiro.dev en todos los tipos de
@@ -108,12 +111,15 @@ func (h *Handler) attemptAccount(ctx context.Context, w http.ResponseWriter, acc
 	payloadBytes, err := json.Marshal(payloadResult.Payload)
 	if err != nil {
 		writeOpenAIError(w, http.StatusInternalServerError, "failed to encode Kiro payload: "+err.Error())
+		dbg.FlushOnError(http.StatusInternalServerError, err.Error())
 		return 0, "", true
 	}
+	dbg.LogKiroRequestBody(payloadBytes) // routes_openai.py:338-344
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, h.apiURL(acc), bytes.NewReader(payloadBytes))
 	if err != nil {
 		writeOpenAIError(w, http.StatusInternalServerError, "failed to build Kiro request: "+err.Error())
+		dbg.FlushOnError(http.StatusInternalServerError, err.Error())
 		return 0, "", true
 	}
 
@@ -125,14 +131,23 @@ func (h *Handler) attemptAccount(ctx context.Context, w http.ResponseWriter, acc
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return h.handleKiroError(w, acc, req.Model, resp)
+		return h.handleKiroError(w, dbg, acc, req.Model, resp)
 	}
 
 	h.accounts.ReportSuccess(acc.ID, req.Model)
+	resp.Body = dbg.RawBody(resp.Body)
+	w = dbg.ModifiedWriter(w)
+	var serveErr error
 	if req.Stream {
-		h.serveStreaming(w, req, resp)
+		serveErr = h.serveStreaming(w, req, resp)
 	} else {
-		h.serveNonStreaming(w, req, resp)
+		serveErr = h.serveNonStreaming(w, req, resp)
+	}
+	// routes_openai.py:415-419,439.
+	if serveErr != nil {
+		dbg.FlushOnError(http.StatusInternalServerError, serveErr.Error())
+	} else {
+		dbg.DiscardBuffers()
 	}
 	return 0, "", true
 }
@@ -173,7 +188,7 @@ func (h *Handler) handleTransportError(acc *accountmanager.Account, model string
 // (`except Exception: error_content = b"Unknown error"`) para el caso de
 // error de lectura, ampliado aquí también al caso de cuerpo vacío para que
 // el userMessage propagado al cliente nunca sea "".
-func (h *Handler) handleKiroError(w http.ResponseWriter, acc *accountmanager.Account, model string, resp *http.Response) (status int, message string, done bool) {
+func (h *Handler) handleKiroError(w http.ResponseWriter, dbg *debuglogger.DebugLogger, acc *accountmanager.Account, model string, resp *http.Response) (status int, message string, done bool) {
 	body, readErr := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if readErr != nil || len(body) == 0 {
@@ -184,6 +199,7 @@ func (h *Handler) handleKiroError(w http.ResponseWriter, acc *accountmanager.Acc
 	classification := h.accounts.ReportFailure(acc.ID, model, resp.StatusCode, reason, userMessage)
 
 	if classification == accounterrors.Fatal {
+		dbg.FlushOnError(resp.StatusCode, userMessage) // routes_openai.py:480
 		writeOpenAIError(w, resp.StatusCode, userMessage)
 		return 0, "", true
 	}

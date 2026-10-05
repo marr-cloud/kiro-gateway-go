@@ -128,7 +128,9 @@ func drivePipeline(body io.Reader, pipeline *streamingcore.Pipeline, formatter *
 // Task 8b (SAVE side): después de cerrar el stream (formatter.Finish),
 // persiste la información de truncación en truncationstate si
 // ShouldInjectRecovery es true (routes_openai.py:266-285).
-func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsopenai.ChatCompletionRequest, resp *http.Response) {
+// Devuelve el error de drivePipeline: no llega al cliente, solo decide el
+// volcado de DEBUG_MODE en attemptAccount.
+func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsopenai.ChatCompletionRequest, resp *http.Response) error {
 	defer resp.Body.Close()
 
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -172,6 +174,7 @@ func (h *Handler) serveStreaming(w http.ResponseWriter, req *modelsopenai.ChatCo
 			})
 		}
 	}
+	return err
 }
 
 // computeMessageHash computes the SHA256 hash of the first 500 characters
@@ -191,7 +194,7 @@ func computeMessageHash(content string) string {
 // SSE — ver collectResponse (collect.go) para el porqué de este diseño
 // (mismo que collect_stream_response del original). Port de
 // routes_openai.py:423-441 (rama account-system).
-func (h *Handler) serveNonStreaming(w http.ResponseWriter, req *modelsopenai.ChatCompletionRequest, resp *http.Response) {
+func (h *Handler) serveNonStreaming(w http.ResponseWriter, req *modelsopenai.ChatCompletionRequest, resp *http.Response) error {
 	defer resp.Body.Close()
 
 	pipeline := h.newPipeline()
@@ -200,8 +203,9 @@ func (h *Handler) serveNonStreaming(w http.ResponseWriter, req *modelsopenai.Cha
 	var buf bytes.Buffer
 	if err := drivePipeline(resp.Body, pipeline, formatter, &buf, nil); err != nil {
 		writeOpenAIError(w, http.StatusInternalServerError, "error reading Kiro stream: "+err.Error())
-		return
+		return err
 	}
 
 	writeJSON(w, http.StatusOK, collectResponse(buf.Bytes(), req.Model))
+	return nil
 }

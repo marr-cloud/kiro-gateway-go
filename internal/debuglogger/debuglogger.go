@@ -50,8 +50,10 @@ func New(mode Mode, dir string) *DebugLogger {
 	return &DebugLogger{mode: mode, dir: dir, appLogsBuf: &appLogBuffer{}}
 }
 
+// isEnabled admite d == nil (sin logger en el context): todos los métodos
+// públicos pasan por aquí, así que las rutas no tienen que comprobarlo.
 func (d *DebugLogger) isEnabled() bool { // _is_enabled, debug_logger.py:78-80
-	return d.mode == ModeErrors || d.mode == ModeAll
+	return d != nil && (d.mode == ModeErrors || d.mode == ModeAll)
 }
 
 func (d *DebugLogger) isImmediateWrite() bool { // _is_immediate_write, :82-84
@@ -84,11 +86,17 @@ func (d *DebugLogger) PrepareNewRequest(ctx context.Context) context.Context {
 
 // LogRequestBody: log_request_body (debug_logger.py:156-170).
 func (d *DebugLogger) LogRequestBody(body []byte) {
+	if !d.isEnabled() { // &d.campo con d == nil haría panic
+		return
+	}
 	d.logBody(&d.requestBodyBuf, "request_body", "request_body.json", body)
 }
 
 // LogKiroRequestBody: log_kiro_request_body (debug_logger.py:172-186).
 func (d *DebugLogger) LogKiroRequestBody(body []byte) {
+	if !d.isEnabled() { // &d.campo con d == nil haría panic
+		return
+	}
 	d.logBody(&d.kiroRequestBodyBuf, "kiro_request_body", "kiro_request_body.json", body)
 }
 
@@ -108,11 +116,17 @@ func (d *DebugLogger) logBody(buf *[]byte, label, filename string, body []byte) 
 
 // LogRawChunk: log_raw_chunk (debug_logger.py:188-202).
 func (d *DebugLogger) LogRawChunk(chunk []byte) {
+	if !d.isEnabled() { // &d.campo con d == nil haría panic
+		return
+	}
 	d.logChunk(&d.rawChunksBuf, "response_stream_raw.txt", chunk)
 }
 
 // LogModifiedChunk: log_modified_chunk (debug_logger.py:204-218).
 func (d *DebugLogger) LogModifiedChunk(chunk []byte) {
+	if !d.isEnabled() { // &d.campo con d == nil haría panic
+		return
+	}
 	d.logChunk(&d.modifiedChunksBuf, "response_stream_modified.txt", chunk)
 }
 
@@ -210,6 +224,9 @@ func (d *DebugLogger) writeIfNonEmpty(filename string, data []byte) bool {
 // DiscardBuffers: discard_buffers (:318-330). "errors" limpia todo; "all"
 // ADEMÁS escribe app_logs.txt antes de limpiar ese buffer.
 func (d *DebugLogger) DiscardBuffers() {
+	if !d.isEnabled() {
+		return
+	}
 	switch d.mode {
 	case ModeErrors:
 		d.clearBuffers()

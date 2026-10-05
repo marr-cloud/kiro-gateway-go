@@ -340,6 +340,25 @@ todo funciona como antes, con el fake reasoning de §16.
 
 ---
 
+### 19. `DEBUG_MODE` registra la respuesta completa en ambas rutas
+
+**Qué cambia:** el port tenía portado el `DebugLogger`, pero las rutas solo llamaban a
+`LogRequestBody` (desde el middleware). Ahora se cablea como en el original: el payload a Kiro
+(`kiro_request_body.json`), cada chunk crudo del stream (`response_stream_raw.txt`), el volcado
+en errores (`FlushOnError`: error Fatal de Kiro, fallo al construir el payload o error a mitad de
+stream) y el descarte en las respuestas correctas (`DiscardBuffers`). Sin esto, `DEBUG_MODE=errors`
+no escribía nunca nada.
+
+La divergencia está en `response_stream_modified.txt`: el original solo registra los deltas de texto
+de la ruta OpenAI (`streaming_openai.py:154,183,252`). El port registra **todo** lo que sale hacia el
+cliente, en ambas rutas: los eventos SSE en streaming y el JSON final en no-streaming.
+
+**Impacto:** con `DEBUG_MODE=all` se puede comparar lo que mandó Kiro con lo que recibió el cliente
+(Claude Code incluido), algo que hacía falta para diagnosticar cortes como los de §17. Con
+`DEBUG_MODE=off` no cambia nada: los envoltorios no se instalan.
+
+---
+
 ## Comportamientos del original que se replican a propósito
 
 El upstream tiene cinco comportamientos que son defectos o atajos, pero **se replican a propósito

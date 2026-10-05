@@ -14,6 +14,8 @@ import (
 	"github.com/marr-cloud/kiro-gateway-go/internal/accounterrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/accountmanager"
 	"github.com/marr-cloud/kiro-gateway-go/internal/convertersanthropic"
+	"github.com/marr-cloud/kiro-gateway-go/internal/debuglogger"
+	"github.com/marr-cloud/kiro-gateway-go/internal/debugmiddleware"
 	"github.com/marr-cloud/kiro-gateway-go/internal/httpclient"
 	"github.com/marr-cloud/kiro-gateway-go/internal/kiroerrors"
 	"github.com/marr-cloud/kiro-gateway-go/internal/modelsanthropic"
@@ -91,6 +93,7 @@ func (h *Handler) failoverMessages(ctx context.Context, w http.ResponseWriter, r
 // error Fatal de Kiro propagado al cliente); done=false con status/mensaje si
 // el fallo es Recoverable y el llamador debe probar la siguiente cuenta.
 func (h *Handler) attemptAccount(ctx context.Context, w http.ResponseWriter, acc *accountmanager.Account, req *modelsanthropic.AnthropicMessagesRequest) (status int, message string, done bool) {
+	dbg := debugmiddleware.FromContext(ctx)
 	conversationID := utils.GenerateConversationID(nil)
 
 	// profileArn obligatorio para runtime.kiro.dev (routes_anthropic.py:380).
@@ -103,12 +106,15 @@ func (h *Handler) attemptAccount(ctx context.Context, w http.ResponseWriter, acc
 	payloadBytes, err := json.Marshal(payloadResult.Payload)
 	if err != nil {
 		writeAnthropicError(w, http.StatusInternalServerError, "api_error", "failed to encode Kiro payload: "+err.Error())
+		dbg.FlushOnError(http.StatusInternalServerError, err.Error())
 		return 0, "", true
 	}
+	dbg.LogKiroRequestBody(payloadBytes) // routes_anthropic.py:401-407
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, h.apiURL(acc), bytes.NewReader(payloadBytes))
 	if err != nil {
 		writeAnthropicError(w, http.StatusInternalServerError, "api_error", "failed to build Kiro request: "+err.Error())
+		dbg.FlushOnError(http.StatusInternalServerError, err.Error())
 		return 0, "", true
 	}
 
@@ -119,14 +125,23 @@ func (h *Handler) attemptAccount(ctx context.Context, w http.ResponseWriter, acc
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return h.handleKiroError(w, acc, req.Model, resp)
+		return h.handleKiroError(w, dbg, acc, req.Model, resp)
 	}
 
 	h.accounts.ReportSuccess(acc.ID, req.Model)
+	resp.Body = dbg.RawBody(resp.Body)
+	w = dbg.ModifiedWriter(w)
+	var serveErr error
 	if req.Stream {
-		h.serveStreaming(w, req, resp)
+		serveErr = h.serveStreaming(w, req, resp)
 	} else {
-		h.serveNonStreaming(w, req, resp)
+		serveErr = h.serveNonStreaming(w, req, resp)
+	}
+	// routes_anthropic.py:483-487,514.
+	if serveErr != nil {
+		dbg.FlushOnError(http.StatusInternalServerError, serveErr.Error())
+	} else {
+		dbg.DiscardBuffers()
 	}
 	return 0, "", true
 }
@@ -156,7 +171,7 @@ func (h *Handler) handleTransportError(acc *accountmanager.Account, model string
 // accountmanager.Manager.ReportFailure). Fatal → el error real de Kiro al
 // cliente en dialecto Anthropic (done=true); Recoverable → done=false para
 // seguir con la siguiente cuenta.
-func (h *Handler) handleKiroError(w http.ResponseWriter, acc *accountmanager.Account, model string, resp *http.Response) (status int, message string, done bool) {
+func (h *Handler) handleKiroError(w http.ResponseWriter, dbg *debuglogger.DebugLogger, acc *accountmanager.Account, model string, resp *http.Response) (status int, message string, done bool) {
 	body, readErr := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if readErr != nil || len(body) == 0 {
@@ -167,6 +182,7 @@ func (h *Handler) handleKiroError(w http.ResponseWriter, acc *accountmanager.Acc
 	classification := h.accounts.ReportFailure(acc.ID, model, resp.StatusCode, reason, userMessage)
 
 	if classification == accounterrors.Fatal {
+		dbg.FlushOnError(resp.StatusCode, userMessage) // routes_anthropic.py:555
 		if reason == accounterrors.ReasonContentLengthExceedsThreshold {
 			writePromptTooLong(w, userMessage)
 			return 0, "", true
