@@ -59,7 +59,7 @@ function Get-GatewayProcess {
 
 function Start-Gateway {
     if (Test-Gateway) { return "kiro-gateway ya corre en $base" }
-    if (-not (Test-Path $exe)) { throw "No encuentro $exe. Compilalo con: task build" }
+    if (-not (Test-Path $exe)) { throw "No encuentro $exe. Ejecuta scripts/install.ps1 (o task build)" }
     New-Item -ItemType Directory -Force $logDir | Out-Null
     # El gateway lee .env y credentials.json del directorio de trabajo.
     $envPrefix = if ($DebugMode) { "set DEBUG_MODE=$DebugMode&& " } else { '' }
