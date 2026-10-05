@@ -369,7 +369,8 @@ respaldo por refusal. Ese respaldo sale de `refusalFallbackModels`, un campo de
 `claude-opus-5.5` y `claude-opus-5 → claude-opus-4.8`).
 
 **Impacto:** lo usa el mod de Claude Code (`claude-mod/`) para `/kiro` y para reintentar un corte
-(§17) con el modelo que declara Kiro. No hace peticiones a Kiro: lee lo que guardó el discovery.
+(§17) con el modelo que declara Kiro: una vez por turno, y el resto del turno sigue con el respaldo.
+No hace peticiones a Kiro: lee lo que guardó el discovery.
 Las rutas existentes no cambian.
 
 El log por petición registra `GET /health` a nivel DEBUG; el original, vía `uvicorn.access`, lo

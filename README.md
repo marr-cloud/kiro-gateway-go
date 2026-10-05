@@ -123,15 +123,18 @@ docker pull ghcr.io/marr-cloud/kiro-gateway-go:latest
 
 En Windows, `scripts/kiro-claude.ps1` arranca el gateway si no está corriendo y abre Claude Code
 apuntando a él, con el mod [`claude-mod/`](claude-mod) cargado. La key sale de `PROXY_API_KEY` en
-el `.env` y solo vive en el entorno de ese proceso.
+el `.env` y solo vive en el entorno de ese proceso. Hace falta PowerShell 7 (`pwsh`): el mod lo usa
+para lanzar `scripts/kiro-gateway.ps1`.
 
 ```powershell
 Set-Alias kclaude C:\ruta\a\kiro-gateway\scripts\kiro-claude.ps1   # en tu $PROFILE
 kclaude
 ```
 
-El mod reintenta una sola vez con el modelo de respaldo que declara Kiro cuando un modelo corta la
-respuesta (por ejemplo `claude-sonnet-5.5 → claude-sonnet-5`), relanza el gateway si se cayó y
+Cuando un modelo corta la respuesta, el mod reintenta con el modelo de respaldo que declara Kiro
+(por ejemplo `claude-sonnet-5.5 → claude-sonnet-5`) una vez por turno, y el resto del turno sigue
+con el respaldo. Un corte cuesta 2 peticiones a Kiro si el respaldo responde, o 3 si también corta;
+sin el mod, Claude Code ya hace 2 por su cuenta. El mod también relanza el gateway si se cayó y
 añade `/kiro`:
 
 | Comando | Hace |
@@ -142,7 +145,9 @@ añade `/kiro`:
 | `/kiro debug all\|errors\|off` | Reinicia con ese `DEBUG_MODE` y muestra la carpeta de debug |
 | `/kiro models [id]` | Tabla de modelos (thinking nativo, effort, respaldo) o cambia el modelo de la sesión |
 
-`scripts/kiro-gateway.ps1 start|stop|restart|logs` hace lo mismo desde la terminal.
+`scripts/kiro-gateway.ps1 start|stop|restart|logs` hace lo mismo desde la terminal. El gateway que
+lanza el script no hereda el entorno de la terminal: solo cuentan su `.env` y el `-DebugMode` que se
+le pase.
 
 ### Flags de línea de comandos
 
