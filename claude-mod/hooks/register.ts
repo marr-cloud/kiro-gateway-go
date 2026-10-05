@@ -4,7 +4,7 @@
 //  - /kiro controla el gateway (estado, restart, logs, debug, models).
 // Fuera de un gateway local (ANTHROPIC_BASE_URL) queda inerte.
 import type { EngineInterface, Register } from 'claude-code'
-import { fallbackMap, localBase, modelKey, type Status } from './kiro.ts'
+import { USAGE, fallbackMap, formatModels, formatStatus, localBase, modelKey, parseArgs, type Status } from './kiro.ts'
 
 // Estado del módulo: un reload vuelve a lanzar session.start y lo rehace.
 // Los helpers viven a nivel de módulo: el cargador de hooks exige que toda función que reciba $ se declare ahí.
@@ -37,6 +37,8 @@ async function runScript($: EngineInterface, args: string[]): Promise<{ ok: bool
   )
   return { ok: r.exitCode === 0, text: `${r.stdout}${r.stderr}`.trim() }
 }
+
+const DEBUG_MODES = ['all', 'errors', 'off']
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -74,5 +76,51 @@ export const register: Register = on => {
     if (first.stopReason !== 'refusal' || !fallback) return first
     $.ui.toast(`${e.model} cortó → reintento con ${fallback}`, { timeoutMs: 8000 })
     return yield* next({ ...e, model: fallback })
+  })
+
+  on('command.run', { command: 'kiro' }, async ($, e) => {
+    if (!state.base) return { text: 'El mod kiro solo actúa con ANTHROPIC_BASE_URL apuntando a un gateway local (kclaude).' }
+    const { sub, rest } = parseArgs(e.args)
+    try {
+      switch (sub) {
+        case '':
+          return { text: formatStatus(await fetchStatus($), await $.session.model()) }
+        case 'restart': {
+          const st = await fetchStatus($).catch(() => undefined)
+          const r = await runScript($, ['restart', ...(st ? ['-DebugMode', st.debug.mode] : [])])
+          if (r.ok) await fetchStatus($).catch(() => undefined)
+          return { text: r.text }
+        }
+        case 'logs': {
+          const n = rest[0] === undefined ? 20 : Number(rest[0])
+          if (!Number.isInteger(n) || n <= 0) return { text: 'Uso: /kiro logs [n]' }
+          return { text: (await runScript($, ['logs', '-Lines', String(n)])).text }
+        }
+        case 'debug': {
+          const mode = rest[0] ?? ''
+          if (!DEBUG_MODES.includes(mode)) return { text: 'Uso: /kiro debug all|errors|off' }
+          const r = await runScript($, ['restart', '-DebugMode', mode])
+          if (!r.ok) return { text: r.text }
+          const st = await fetchStatus($)
+          return { text: `${r.text}\ndebug: ${st.debug.mode} → ${st.debug.dir}` }
+        }
+        case 'models': {
+          const st = await fetchStatus($)
+          const id = rest[0]
+          if (!id) return { text: formatModels(st.models) }
+          if (!st.models.some(m => modelKey(m.id) === modelKey(id))) {
+            return { text: `${id} no está en la lista de Kiro. /kiro models para verla.` }
+          }
+          // Sin await: /model se encola y corre cuando esta orden termina.
+          $.command.run({ command: 'model', args: id }).catch(err => $.ui.toast(`/model ${id} falló: ${String(err)}`))
+          return { text: `Cambiando el modelo de la sesión a ${id}…` }
+        }
+        default:
+          return { text: USAGE }
+      }
+    } catch (err) {
+      if (!(await healthy($))) return { text: `kiro-gateway no responde en ${state.base}. Prueba /kiro restart.` }
+      return { text: err instanceof Error ? err.message : String(err) }
+    }
   })
 }
