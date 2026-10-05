@@ -77,9 +77,22 @@ export const register: Register = on => {
       if (r.ok) await fetchStatus($).catch(() => undefined)
     }
 
-    const first = yield* next(e)
+    // El motor real entrega el refusal en el chunk 'stop' y deja stopReason en null
+    // en el resultado de next(); se mira en ambos sitios.
+    const gen = next(e)
+    let refused = false
+    let first
+    for (;;) {
+      const r = await gen.next()
+      if (r.done) {
+        first = r.value
+        break
+      }
+      if (r.value.kind === 'stop' && r.value.stopReason === 'refusal') refused = true
+      yield r.value
+    }
     const fallback = state.fallbacks.get(modelKey(e.model))
-    if (first.stopReason !== 'refusal' || !fallback) return first
+    if (!(refused || first.stopReason === 'refusal') || !fallback) return first
     $.ui.toast(`${e.model} cortó → reintento con ${fallback}`, { timeoutMs: 8000 })
     return yield* next({ ...e, model: fallback })
   })

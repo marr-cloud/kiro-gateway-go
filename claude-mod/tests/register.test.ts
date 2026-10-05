@@ -80,6 +80,14 @@ describe('refusal', () => {
     expect(r.answer).toBe('ok')
   })
 
+  test('detecta el refusal que solo viaja en el chunk stop (motor real)', async ($, on) => {
+    const w = world(on, { stopOnlyInChunk: true })
+    await start($)
+    const r = await step($, 'claude-sonnet-5-5')
+    expect(w.steps).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5'])
+    expect(r.answer).toBe('ok')
+  })
+
   test('no reintenta dos veces si el respaldo también corta', async ($, on) => {
     const w = world(on, { refuse: () => true })
     await start($)
