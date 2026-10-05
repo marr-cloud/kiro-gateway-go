@@ -26,6 +26,7 @@ export type World = {
   registered: string[]
   steps: string[]
   commands: { command: string; args: string }[]
+  debugMode: string
 }
 
 const LOCAL_ENV = { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8000', ANTHROPIC_AUTH_TOKEN: 'k-test' }
@@ -34,7 +35,7 @@ const LOCAL_ENV = { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8000', ANTHROPIC_AUTH_
 export function world(on: On, opts: Partial<World> & { env?: Record<string, string> } = {}): World {
   const w: World = {
     healthy: true, statusCode: 200, runExit: 0, refuse: m => m === 'claude-sonnet-5-5',
-    fetches: [], runs: [], toasts: [], registered: [], steps: [], commands: [], ...opts,
+    fetches: [], runs: [], toasts: [], registered: [], steps: [], commands: [], debugMode: STATUS.debug.mode, ...opts,
   }
   // env vivo (no mock.env, que copia): un test puede cambiarlo entre dos session.start.
   const env: Record<string, string | undefined> = opts.env ?? LOCAL_ENV
@@ -50,7 +51,7 @@ export function world(on: On, opts: Partial<World> & { env?: Record<string, stri
     if (e.url.endsWith('/health')) return { value: { status: 200, ok: true, headers: {}, text: '{"status":"healthy"}' } }
     if (e.url.endsWith('/kiro/status')) {
       const ok = w.statusCode === 200
-      return { value: { status: w.statusCode, ok, headers: {}, text: ok ? JSON.stringify(STATUS) : '{"type":"error"}' } }
+      return { value: { status: w.statusCode, ok, headers: {}, text: ok ? JSON.stringify({ ...STATUS, debug: { ...STATUS.debug, mode: w.debugMode } }) : '{"type":"error"}' } }
     }
     return { value: { status: 404, ok: false, headers: {}, text: '' } }
   })

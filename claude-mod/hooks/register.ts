@@ -40,6 +40,12 @@ async function runScript($: EngineInterface, args: string[]): Promise<{ ok: bool
 
 const DEBUG_MODES = ['all', 'errors', 'off']
 
+function switchModel($: EngineInterface, id: string): void {
+  setTimeout(() => {
+    $.command.run({ command: 'model', args: id }).catch(err => $.ui.toast(`/model ${id} falló: ${String(err)}`))
+  }, 0)
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -111,8 +117,9 @@ export const register: Register = on => {
           if (!st.models.some(m => modelKey(m.id) === modelKey(id))) {
             return { text: `${id} no está en la lista de Kiro. /kiro models para verla.` }
           }
-          // Sin await: /model se encola y corre cuando esta orden termina.
-          $.command.run({ command: 'model', args: id }).catch(err => $.ui.toast(`/model ${id} falló: ${String(err)}`))
+          // El host rechaza un command.run anidado dentro de este hook (esperaría a su propio turno):
+          // se lanza en un macrotask, ya fuera del hook, y /model corre cuando la sesión queda libre.
+          switchModel($, id)
           return { text: `Cambiando el modelo de la sesión a ${id}…` }
         }
         default:

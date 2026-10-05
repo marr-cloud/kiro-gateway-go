@@ -24,10 +24,10 @@ describe('/kiro', () => {
   })
 
   test('restart conserva el DEBUG_MODE actual', async ($, on) => {
-    const w = world(on)
+    const w = world(on, { debugMode: 'all' })
     await start($)
     const text = await kiro($, 'restart')
-    expect(w.runs.map(r => r.slice(5))).toEqual([['restart', '-DebugMode', 'off', '-Port', '8000']])
+    expect(w.runs.map(r => r.slice(5))).toEqual([['restart', '-DebugMode', 'all', '-Port', '8000']])
     expect(text).toBe('kiro-gateway listo en http://127.0.0.1:8000')
   })
 
@@ -53,11 +53,15 @@ describe('/kiro', () => {
   })
 
   test('models muestra la tabla y valida el id', async ($, on) => {
-    world(on)
+    const w = world(on)
     await start($)
     expect(await kiro($, 'models')).toContain('claude-sonnet-5.5  adaptive')
     expect(await kiro($, 'models gpt-9')).toBe('gpt-9 no está en la lista de Kiro. /kiro models para verla.')
+    await new Promise(r => setTimeout(r, 20))
+    expect(w.commands.filter(c => c.command === 'model')).toEqual([])
     expect(await kiro($, 'models claude-sonnet-5-5')).toBe('Cambiando el modelo de la sesión a claude-sonnet-5-5…')
+    await new Promise(r => setTimeout(r, 20))
+    expect(w.commands).toContainEqual({ command: 'model', args: 'claude-sonnet-5-5' })
   })
 
   test('subcomando desconocido muestra el uso', async ($, on) => {
