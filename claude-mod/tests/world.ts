@@ -1,6 +1,6 @@
 // Mundo simulado bajo el mod para los tests: env, gateway (http.fetch),
 // script (process.run), toasts, modelo de la sesión y el modelo (turn.step).
-import { mock, type Engine } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Status } from '../hooks/kiro.ts'
 
@@ -36,7 +36,9 @@ export function world(on: On, opts: Partial<World> & { env?: Record<string, stri
     healthy: true, statusCode: 200, runExit: 0, refuse: m => m === 'claude-sonnet-5-5',
     fetches: [], runs: [], toasts: [], registered: [], steps: [], commands: [], ...opts,
   }
-  mock.env(on, opts.env ?? LOCAL_ENV)
+  // env vivo (no mock.env, que copia): un test puede cambiarlo entre dos session.start.
+  const env: Record<string, string | undefined> = opts.env ?? LOCAL_ENV
+  on('env.get', ($, e) => ({ value: env[e.name] }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', ($, e) => { w.registered.push(e.name); return { value: { command: e.name } } })
   on('ui.toast', ($, e) => { w.toasts.push(e.text); return { value: undefined } })

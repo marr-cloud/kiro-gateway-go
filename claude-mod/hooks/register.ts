@@ -41,6 +41,11 @@ async function runScript($: EngineInterface, args: string[]): Promise<{ ok: bool
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    // Reinicio: el estado es del módulo y sobrevive entre sesiones; fuera de un gateway local debe quedar vacío.
+    state.base = ''
+    state.port = ''
+    state.token = ''
+    state.fallbacks = new Map()
     const local = localBase(await $.env.get('ANTHROPIC_BASE_URL'))
     if (!local) return started
     state.base = local.base

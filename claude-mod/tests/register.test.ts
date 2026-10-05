@@ -21,6 +21,20 @@ describe('arranque', () => {
     expect(r.stopReason).toBe('refusal')
   })
 
+  test('una sesión no local tras una local reinicia el estado y deja el mod inerte', async ($, on) => {
+    const env: Record<string, string> = { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8000', ANTHROPIC_AUTH_TOKEN: 'k-test' }
+    const w = world(on, { env })
+    await start($)
+    expect(w.registered).toEqual(['kiro'])
+    env.ANTHROPIC_BASE_URL = 'https://api.anthropic.com' // el mock de env lee el objeto en cada get
+    await start($)
+    w.fetches.length = 0
+    const r = await step($, 'claude-sonnet-5-5')
+    expect(w.fetches).toEqual([])
+    expect(w.steps).toEqual(['claude-sonnet-5-5'])
+    expect(r.stopReason).toBe('refusal')
+  })
+
   test('registra /kiro y pide el estado una vez', async ($, on) => {
     const w = world(on)
     await start($)
@@ -44,7 +58,7 @@ describe('gateway caído', () => {
     expect(r.stopReason).toBe('end_turn')
   })
 
-  test('si no arranca avisa una vez y deja seguir la petición', async ($, on) => {
+  test('si no arranca avisa y deja seguir la petición', async ($, on) => {
     const w = world(on, { runExit: 1 })
     await start($)
     w.healthy = false
