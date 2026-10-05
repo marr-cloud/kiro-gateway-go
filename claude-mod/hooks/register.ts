@@ -41,12 +41,6 @@ async function runScript($: EngineInterface, args: string[]): Promise<{ ok: bool
 
 const DEBUG_MODES = ['all', 'errors', 'off']
 
-function switchModel($: EngineInterface, id: string): void {
-  $.clock.after(0, () => {
-    $.command.run({ command: 'model', args: id }).catch(err => $.ui.toast(`/model ${id} falló: ${String(err)}`))
-  })
-}
-
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -147,10 +141,12 @@ export const register: Register = on => {
           if (!st.models.some(m => modelKey(m.id) === modelKey(id))) {
             return { text: `${id} no está en la lista de Kiro. /kiro models para verla.` }
           }
-          // El host rechaza un command.run anidado dentro de este hook (esperaría a su propio turno):
-          // se lanza en un temporizador ($.clock.after), ya fuera del hook, y /model corre cuando la sesión queda libre.
-          switchModel($, id)
-          return { text: `Cambiando el modelo de la sesión a ${id}…` }
+          // No se lanza /model: `/model <id>` escrito guarda el modelo en los settings globales
+          // (~/.claude/settings.json) y el `claude` normal arrancaría con un id de Kiro. El selector
+          // de /model con `s` lo cambia solo para esta sesión, y un mod no tiene otra forma de hacerlo.
+          return {
+            text: `Para usar ${id} solo en esta sesión: /model, elige ${id} y pulsa s.\n(/model ${id} escrito así lo guarda como predeterminado de todas tus sesiones de Claude Code.)`,
+          }
         }
         default:
           return { text: USAGE }

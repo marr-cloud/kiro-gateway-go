@@ -12,11 +12,6 @@ async function kiro($: Engine, args = '') {
   return run.text ?? ''
 }
 
-// El callback de clock.after corre tras unas vueltas de microtareas del motor.
-async function flush() {
-  for (let i = 0; i < 20; i++) await Promise.resolve()
-}
-
 describe('/kiro', () => {
   test('sin argumentos muestra el estado', async ($, on) => {
     world(on)
@@ -62,11 +57,10 @@ describe('/kiro', () => {
     await start($)
     expect(await kiro($, 'models')).toContain('claude-sonnet-5.5  adaptive')
     expect(await kiro($, 'models gpt-9')).toBe('gpt-9 no está en la lista de Kiro. /kiro models para verla.')
-    await flush()
+    // No lanza /model: `/model <id>` lo guarda en los settings globales y afectaría al `claude` normal.
+    const text = await kiro($, 'models claude-sonnet-5-5')
+    expect(text).toContain('/model, elige claude-sonnet-5-5 y pulsa s')
     expect(w.commands.filter(c => c.command === 'model')).toEqual([])
-    expect(await kiro($, 'models claude-sonnet-5-5')).toBe('Cambiando el modelo de la sesión a claude-sonnet-5-5…')
-    await flush()
-    expect(w.commands).toContainEqual({ command: 'model', args: 'claude-sonnet-5-5' })
   })
 
   test('subcomando desconocido muestra el uso', async ($, on) => {

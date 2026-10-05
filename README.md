@@ -143,7 +143,7 @@ añade `/kiro`:
 | `/kiro restart` | Reinicia el gateway conservando su `DEBUG_MODE` |
 | `/kiro logs [n]` | Últimas `n` líneas (20) de `gateway.log` y `gateway.err.log` |
 | `/kiro debug all\|errors\|off` | Reinicia con ese `DEBUG_MODE` y muestra la carpeta de debug |
-| `/kiro models [id]` | Tabla de modelos (thinking nativo, effort, respaldo) o cambia el modelo de la sesión |
+| `/kiro models [id]` | Tabla de modelos (thinking nativo, effort, respaldo); con `id`, cómo cambiar a ese modelo solo en esta sesión (`/model` y `s`: `/model <id>` lo guardaría en tus settings globales) |
 
 `scripts/kiro-gateway.ps1 start|stop|restart|logs` hace lo mismo desde la terminal. El gateway que
 lanza el script no hereda el entorno de la terminal: solo cuentan su `.env` y el `-DebugMode` que se
