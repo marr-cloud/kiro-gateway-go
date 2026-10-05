@@ -119,6 +119,31 @@ docker pull ghcr.io/marr-cloud/kiro-gateway-go:latest
 > [página de Releases](https://github.com/marr-cloud/kiro-gateway-go/releases). Descarga el binario
 > de tu plataforma en lugar de compilar, si lo prefieres.
 
+### Con Claude Code (`kclaude` y `/kiro`)
+
+En Windows, `scripts/kiro-claude.ps1` arranca el gateway si no está corriendo y abre Claude Code
+apuntando a él, con el mod [`claude-mod/`](claude-mod) cargado. La key sale de `PROXY_API_KEY` en
+el `.env` y solo vive en el entorno de ese proceso.
+
+```powershell
+Set-Alias kclaude C:\ruta\a\kiro-gateway\scripts\kiro-claude.ps1   # en tu $PROFILE
+kclaude
+```
+
+El mod reintenta una sola vez con el modelo de respaldo que declara Kiro cuando un modelo corta la
+respuesta (por ejemplo `claude-sonnet-5.5 → claude-sonnet-5`), relanza el gateway si se cayó y
+añade `/kiro`:
+
+| Comando | Hace |
+| --- | --- |
+| `/kiro` | Versión, uptime, cuenta activa, debug y modelo de la sesión |
+| `/kiro restart` | Reinicia el gateway conservando su `DEBUG_MODE` |
+| `/kiro logs [n]` | Últimas `n` líneas (20) de `gateway.log` y `gateway.err.log` |
+| `/kiro debug all\|errors\|off` | Reinicia con ese `DEBUG_MODE` y muestra la carpeta de debug |
+| `/kiro models [id]` | Tabla de modelos (thinking nativo, effort, respaldo) o cambia el modelo de la sesión |
+
+`scripts/kiro-gateway.ps1 start|stop|restart|logs` hace lo mismo desde la terminal.
+
 ### Flags de línea de comandos
 
 | Flag | Abreviatura | Descripción |
