@@ -59,15 +59,16 @@ const (
 	dialectAnthropic
 )
 
-// classify decide el dialect de un path. Los paths fuera de las 6 rutas
+// classify decide el dialect de un path. Los paths fuera de las rutas
 // conocidas (incluida cualquier 404 futura) caen en dialectPublic: sin auth,
 // y el 500 de panic recovery (poco probable en esas rutas) usa el dialecto
-// OpenAI como fallback genérico — ver writeErrorForPath.
+// OpenAI como fallback genérico — ver writeErrorForPath. /kiro/status
+// (DIFFERENCES §20) acepta las dos cabeceras, como la ruta Anthropic.
 func classify(path string) dialect {
 	switch path {
 	case "/v1/models", "/v1/chat/completions":
 		return dialectOpenAI
-	case "/v1/messages", "/v1/messages/count_tokens":
+	case "/v1/messages", "/v1/messages/count_tokens", "/kiro/status":
 		return dialectAnthropic
 	default:
 		return dialectPublic

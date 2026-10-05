@@ -227,6 +227,7 @@ VPN_PROXY_URL=http://127.0.0.1:7890     # HTTP
 | `/v1/chat/completions` | POST | API Chat Completions de OpenAI |
 | `/v1/messages` | POST | API Messages de Anthropic |
 | `/v1/messages/count_tokens` | POST | Conteo de tokens (Anthropic) |
+| `/kiro/status` | GET | Estado para el mod de Claude Code: versión, cuenta, debug y modelos con su respaldo por refusal |
 
 Autenticación: `Authorization: Bearer <PROXY_API_KEY>` (dialecto OpenAI) o
 `x-api-key: <PROXY_API_KEY>` (dialecto Anthropic).

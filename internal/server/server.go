@@ -82,6 +82,10 @@ type Server struct {
 	openaiChatCompletions http.HandlerFunc
 	anthropicMessages     http.HandlerFunc
 	anthropicCountTokens  http.HandlerFunc
+
+	// availableModels es la lista de modelos de GET /kiro/status. Seam de
+	// test con el mismo patrón que los handlers de arriba.
+	availableModels func() []string
 }
 
 // New construye un Server listo para Start. accounts y client deben estar ya
@@ -105,6 +109,7 @@ func New(cfg *config.Config, accounts *accountmanager.Manager, client *httpclien
 	s.openaiChatCompletions = openaiHandler.ChatCompletions
 	s.anthropicMessages = anthropicHandler.Messages
 	s.anthropicCountTokens = anthropicHandler.CountTokens
+	s.availableModels = accounts.GetAllAvailableModels
 
 	s.http = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", cfg.ServerHost, cfg.ServerPort),
@@ -142,6 +147,7 @@ func (s *Server) buildHandler() http.Handler {
 	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) { s.openaiChatCompletions(w, r) })
 	mux.HandleFunc("POST /v1/messages", func(w http.ResponseWriter, r *http.Request) { s.anthropicMessages(w, r) })
 	mux.HandleFunc("POST /v1/messages/count_tokens", func(w http.ResponseWriter, r *http.Request) { s.anthropicCountTokens(w, r) })
+	mux.HandleFunc("GET /kiro/status", s.handleKiroStatus)
 
 	var h http.Handler = mux
 	h = recoverMiddleware(h)

@@ -359,6 +359,21 @@ cliente, en ambas rutas: los eventos SSE en streaming y el JSON final en no-stre
 
 ---
 
+### 20. `GET /kiro/status` y el modelo de respaldo por refusal
+
+**Qué cambia:** endpoint nuevo, sin equivalente en el original, protegido con `PROXY_API_KEY`
+(`Authorization: Bearer` o `x-api-key`). Devuelve la versión, el uptime, la cuenta activa, el
+`DEBUG_MODE` con su carpeta absoluta y, por modelo, el razonamiento nativo (§18) y el modelo de
+respaldo por refusal. Ese respaldo sale de `refusalFallbackModels`, un campo de
+`ListAvailableModels` que el original no lee (`claude-sonnet-5.5 → claude-sonnet-5`,
+`claude-opus-5.5` y `claude-opus-5 → claude-opus-4.8`).
+
+**Impacto:** lo usa el mod de Claude Code (`claude-mod/`) para `/kiro` y para reintentar un corte
+(§17) con el modelo que declara Kiro. No hace peticiones a Kiro: lee lo que guardó el discovery.
+Las rutas existentes no cambian.
+
+---
+
 ## Comportamientos del original que se replican a propósito
 
 El upstream tiene cinco comportamientos que son defectos o atajos, pero **se replican a propósito
