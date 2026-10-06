@@ -174,6 +174,14 @@ añade `/kiro`:
 | `/kiro debug all\|errors\|off` | Reinicia con ese `DEBUG_MODE` y muestra la carpeta de debug |
 | `/kiro models [id]` | Tabla de modelos (thinking nativo, effort, respaldo); con `id`, cómo cambiar a ese modelo solo en esta sesión (`/model` y `s`: `/model <id>` lo guardaría en tus settings globales) |
 
+En [auto mode](https://code.claude.com/docs/en/auto-mode-classifier-billing), el modo de permisos
+por defecto desde Claude Code v2.1.283, Claude Code pide al servidor que revise las acciones. Kiro no
+hace esa revisión, así que `kclaude` pone `CLAUDE_CODE_AUTO_MODE_SERVER=0` y el clasificador corre
+desde el cliente, como petición normal al gateway (gasta créditos de Kiro). Si lanzas `claude` contra
+el gateway sin `kclaude`, pon esa variable tú mismo (en la shell o en `env` de tus settings). Si no,
+al primer comando que revise el clasificador aparece «this session isn't eligible» y la acción
+espera a que pulses Enter.
+
 `scripts/kiro-gateway.ps1 start|stop|restart|logs` hace lo mismo desde la terminal. El gateway que
 lanza el script no hereda el entorno de la terminal: solo cuentan su `.env` y el `-DebugMode` que se
 le pase.

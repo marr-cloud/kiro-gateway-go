@@ -88,6 +88,13 @@ configuration. From a clone: `pwsh scripts/install.ps1` (builds with Go 1.27+; `
 [`claude-mod/`](claude-mod) mod loaded (refusal fallback, gateway relaunch, `/kiro`). Details in the
 Spanish README, section «Con Claude Code».
 
+Kiro can't do auto mode's server-side classifier review, so `kclaude` sets
+`CLAUDE_CODE_AUTO_MODE_SERVER=0` and the classifier runs client-side through the gateway (it uses
+Kiro credits). If you start `claude` against the gateway without `kclaude`, set that variable
+yourself; otherwise the first action the classifier checks waits behind a
+[«this session isn't eligible»](https://code.claude.com/docs/en/auto-mode-classifier-billing)
+notice until you press Enter.
+
 ### Build and run
 
 For other platforms, or to use the gateway without Claude Code. Requires **Go 1.27+** (to build

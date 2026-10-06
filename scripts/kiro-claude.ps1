@@ -40,6 +40,11 @@ $vars = @{
     CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = '1'
     # Sin esto, el bloque de atribucion llega a Kiro como texto del system prompt.
     CLAUDE_CODE_ATTRIBUTION_HEADER             = '0'
+    # Kiro no hace la revision del clasificador de auto mode del lado del
+    # servidor (campo `safeguards`): sin esto, Claude Code (v2.1.278+) la pide,
+    # no llega respuesta, cae a su propio clasificador y frena la primera accion
+    # revisada con un aviso de cobro hasta que pulsas Enter.
+    CLAUDE_CODE_AUTO_MODE_SERVER               = '0'
 }
 $saved = @{}
 foreach ($name in $vars.Keys) {
