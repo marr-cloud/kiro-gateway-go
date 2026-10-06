@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 
 	"github.com/marr-cloud/kiro-gateway-go/internal/tokenizer"
@@ -143,6 +144,9 @@ func HandleNativeWebSearch(ctx context.Context, req NativeWebSearchRequest, host
 
 	toolUseID, results, err := CallKiroMCPAPI(ctx, host, query, tp)
 	if err != nil {
+		// mcp_tools.py:163-202 loguea el fallo con logger.error; sin esto el
+		// cliente solo ve "Web search failed" y la causa se pierde.
+		slog.Error("web search failed", "query", query, "error", err)
 		return NativeWebSearchOutcome{
 			StatusCode: 500,
 			Body:       anthropicErrorBody("api_error", "Web search failed. Please try again."),

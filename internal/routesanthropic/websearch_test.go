@@ -54,8 +54,8 @@ func fakeMCPServer(t *testing.T) *httptest.Server {
 		t.Fatalf("marshal inner MCP result: %v", err)
 	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/mcp" {
-			t.Errorf("unexpected MCP path: %s", r.URL.Path)
+		if r.URL.Path != "/" || r.Header.Get("x-amz-target") != "AmazonCodeWhispererStreamingService.InvokeMCP" {
+			t.Errorf("unexpected MCP request: path=%s target=%s", r.URL.Path, r.Header.Get("x-amz-target"))
 		}
 		resp := map[string]any{
 			"result": map[string]any{

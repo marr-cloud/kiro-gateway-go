@@ -37,29 +37,32 @@ const mcpTimeout = 60 * time.Second
 // llamada (igual que "async with httpx.AsyncClient(...) as client" crea un
 // cliente nuevo por invocación), en vez de reusar internal/httpclient.
 //
-// Cabeceras: por la misma razón, tampoco se usa utils.GetKiroHeaders —esa
-// función es el port de utils.py::get_kiro_headers, que build_ las 9
-// cabeceras de GenerateAssistantResponse (Content-Type
-// application/x-amz-json-1.0, x-amz-target fijo a ese método,
-// x-amzn-codewhisperer-optout "true", etc. — utils/headers.go:39-57) y que
-// SOLO usan http_client.py y account_manager.py en el original
-// (confirmado por grep sobre get_kiro_headers en .upstream). mcp_tools.py
-// nunca la importa: construye su propio dict de 3 cabeceras inline
-// (mcp_tools.py:151-155) con Content-Type application/json y
-// x-amzn-codewhisperer-optout "false" — literalmente el valor opuesto al
-// que pondría GetKiroHeaders. Reusar GetKiroHeaders aquí mandaría cabeceras
-// incorrectas a un endpoint distinto (/mcp, no /generateAssistantResponse);
-// se construyen a mano a partir de tp.AccessToken(ctx), que SÍ reusa el
-// seam TokenProvider (utils/headers.go:17-20) sin reinventar la obtención
-// del token.
+// Endpoint y cabeceras: DIVERGENCIA DELIBERADA del original (§D1).
+//
+// mcp_tools.py hace POST {q_host}/mcp con 3 cabeceras inline (Content-Type
+// application/json, Authorization, optout "false") y sin profileArn. Kiro ya
+// no acepta esa forma: responde 400 "profileArn is required for this
+// request." y, con profileArn pero con el User-Agent por defecto de Go, 403
+// "User is not authorized to make this call." (verificado contra
+// runtime.us-east-1.kiro.dev el 2026-10-06). Se replica en su lugar lo que
+// hace kiro-cli 2.27.1 (capturado con KIRO_LOG_LEVEL=trace): la operación
+// RPC AmazonCodeWhispererStreamingService.InvokeMCP — POST {q_host}/ con
+// x-amz-target, Content-Type application/x-amz-json-1.0, cabecera
+// x-amzn-kiro-profile-arn y "profileArn" en el nivel superior del cuerpo
+// JSON-RPC. Las cabeceras parten de utils.GetKiroHeaders (UA de SDK de AWS,
+// el mismo que ya acepta GenerateAssistantResponse) y se sobrescriben
+// x-amz-target y optout ("false", como mandan tanto el original como
+// kiro-cli).
+const invokeMCPTarget = "AmazonCodeWhispererStreamingService.InvokeMCP"
 
 // mcpRequestEnvelope es el cuerpo JSON-RPC 2.0 que CallKiroMCPAPI manda a
-// {host}/mcp. Puerto de mcp_tools.py:128-137.
+// InvokeMCP. Puerto de mcp_tools.py:128-137 más ProfileArn (ver arriba).
 type mcpRequestEnvelope struct {
-	ID      string           `json:"id"`
-	JSONRPC string           `json:"jsonrpc"`
-	Method  string           `json:"method"`
-	Params  mcpRequestParams `json:"params"`
+	ID         string           `json:"id"`
+	JSONRPC    string           `json:"jsonrpc"`
+	Method     string           `json:"method"`
+	Params     mcpRequestParams `json:"params"`
+	ProfileArn string           `json:"profileArn,omitempty"`
 }
 
 type mcpRequestParams struct {
@@ -170,6 +173,7 @@ func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvi
 	logger := debugmiddleware.FromContext(ctx)
 
 	requestID := NewWebSearchRequestID()
+	profileArn := tp.ProfileARN()
 	mcpRequest := mcpRequestEnvelope{
 		ID:      requestID,
 		JSONRPC: "2.0",
@@ -178,6 +182,7 @@ func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvi
 			Name:      "web_search",
 			Arguments: mcpRequestArguments{Query: query},
 		},
+		ProfileArn: profileArn,
 	}
 	body, err := json.Marshal(mcpRequest)
 	if err != nil {
@@ -197,20 +202,24 @@ func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvi
 		}
 	}
 
-	token, err := tp.AccessToken(ctx)
+	headers, err := utils.GetKiroHeaders(ctx, tp)
 	if err != nil {
 		return "", nil, fmt.Errorf("mcptools: obteniendo access token: %w", err)
 	}
+	// GetKiroHeaders usa claves en minúscula sin canonicalizar (ver su
+	// comentario): se sobrescriben por índice directo, no con Set, para no
+	// duplicar la cabecera bajo su forma canónica.
+	headers["x-amz-target"] = []string{invokeMCPTarget}
+	headers["x-amzn-codewhisperer-optout"] = []string{"false"}
+	if profileArn != "" {
+		headers["x-amzn-kiro-profile-arn"] = []string{profileArn}
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, host+"/mcp", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, host+"/", bytes.NewReader(body))
 	if err != nil {
 		return "", nil, fmt.Errorf("mcptools: construyendo el request MCP: %w", err)
 	}
-	// Cabeceras EXACTAS de mcp_tools.py:151-155 — ver el comentario de
-	// cabecera del archivo sobre por qué no se usa utils.GetKiroHeaders.
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("x-amzn-codewhisperer-optout", "false")
-	req.Header.Set("Content-Type", "application/json")
+	req.Header = headers
 
 	client := &http.Client{Timeout: mcpTimeout}
 	resp, err := client.Do(req)
@@ -220,9 +229,11 @@ func CallKiroMCPAPI(ctx context.Context, host, query string, tp utils.TokenProvi
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		// mcp_tools.py:163-165: loguea y devuelve (None, None), sin leer el
-		// body ni reintentar.
-		return "", nil, fmt.Errorf("mcptools: la API MCP respondió %d", resp.StatusCode)
+		// mcp_tools.py:163-165: sin reintentar. A diferencia del original se
+		// incluye un extracto del body en el error: es lo único que distingue
+		// un 400 de validación de un 403 de permisos.
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return "", nil, fmt.Errorf("mcptools: la API MCP respondió %d: %s", resp.StatusCode, bytes.TrimSpace(snippet))
 	}
 
 	respBody, err := io.ReadAll(resp.Body)

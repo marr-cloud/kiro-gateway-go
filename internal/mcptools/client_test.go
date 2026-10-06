@@ -39,10 +39,11 @@ func (f fakeTokenProvider) ProfileARN() string { return f.profile }
 // mcpRequestBody replica la forma que CallKiroMCPAPI debe mandar, para que
 // el fake server pueda verificar el request saliente.
 type mcpRequestBody struct {
-	ID      string `json:"id"`
-	JSONRPC string `json:"jsonrpc"`
-	Method  string `json:"method"`
-	Params  struct {
+	ID         string  `json:"id"`
+	JSONRPC    string  `json:"jsonrpc"`
+	Method     string  `json:"method"`
+	ProfileArn *string `json:"profileArn"`
+	Params     struct {
 		Name      string `json:"name"`
 		Arguments struct {
 			Query string `json:"query"`
@@ -60,7 +61,7 @@ var toolUseIDPattern = regexp.MustCompile(`^srvtoolu_[0-9a-f]{32}$`)
 func TestCallKiroMCPAPI_DoubleDeserialize(t *testing.T) {
 	var gotMethod, gotPath string
 	var gotBody mcpRequestBody
-	var gotAuth, gotOptout, gotContentType string
+	var gotAuth, gotOptout, gotContentType, gotTarget, gotProfileHeader, gotUA string
 
 	innerJSON := `{"results":[{"title":"Go Tutorial","url":"https://go.dev/tour","snippet":"Learn Go","publishedDate":1710339825000}],"totalResults":1,"query":"golang"}`
 
@@ -70,6 +71,9 @@ func TestCallKiroMCPAPI_DoubleDeserialize(t *testing.T) {
 		gotAuth = r.Header.Get("Authorization")
 		gotOptout = r.Header.Get("x-amzn-codewhisperer-optout")
 		gotContentType = r.Header.Get("Content-Type")
+		gotTarget = r.Header.Get("x-amz-target")
+		gotProfileHeader = r.Header.Get("x-amzn-kiro-profile-arn")
+		gotUA = r.Header.Get("User-Agent")
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Errorf("decodificando el body del request MCP: %v", err)
 		}
@@ -89,7 +93,8 @@ func TestCallKiroMCPAPI_DoubleDeserialize(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tp := fakeTokenProvider{token: "tok-123"}
+	const arn = "arn:aws:codewhisperer:us-east-1:123456789012:profile/TEST"
+	tp := fakeTokenProvider{token: "tok-123", profile: arn}
 	toolUseID, results, err := CallKiroMCPAPI(context.Background(), srv.URL, "golang", tp)
 	if err != nil {
 		t.Fatalf("CallKiroMCPAPI devolvió error inesperado: %v", err)
@@ -98,8 +103,20 @@ func TestCallKiroMCPAPI_DoubleDeserialize(t *testing.T) {
 	if gotMethod != http.MethodPost {
 		t.Errorf("método = %q, want POST", gotMethod)
 	}
-	if gotPath != "/mcp" {
-		t.Errorf("path = %q, want /mcp", gotPath)
+	if gotPath != "/" {
+		t.Errorf("path = %q, want / (operación RPC InvokeMCP)", gotPath)
+	}
+	if gotTarget != "AmazonCodeWhispererStreamingService.InvokeMCP" {
+		t.Errorf("x-amz-target = %q, want AmazonCodeWhispererStreamingService.InvokeMCP", gotTarget)
+	}
+	if gotProfileHeader != arn {
+		t.Errorf("x-amzn-kiro-profile-arn = %q, want %q", gotProfileHeader, arn)
+	}
+	if gotBody.ProfileArn == nil || *gotBody.ProfileArn != arn {
+		t.Errorf("body.profileArn = %v, want %q (sin él Kiro responde 400 profileArn is required)", gotBody.ProfileArn, arn)
+	}
+	if !strings.Contains(gotUA, "aws-sdk-") {
+		t.Errorf("User-Agent = %q, want un UA de SDK de AWS (con el de Go por defecto Kiro responde 403)", gotUA)
 	}
 	if gotAuth != "Bearer tok-123" {
 		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer tok-123")
@@ -107,8 +124,8 @@ func TestCallKiroMCPAPI_DoubleDeserialize(t *testing.T) {
 	if gotOptout != "false" {
 		t.Errorf("x-amzn-codewhisperer-optout = %q, want %q (mcp_tools.py:153)", gotOptout, "false")
 	}
-	if gotContentType != "application/json" {
-		t.Errorf("Content-Type = %q, want application/json (mcp_tools.py:154)", gotContentType)
+	if gotContentType != "application/x-amz-json-1.0" {
+		t.Errorf("Content-Type = %q, want application/x-amz-json-1.0", gotContentType)
 	}
 	if gotBody.JSONRPC != "2.0" || gotBody.Method != "tools/call" {
 		t.Errorf("jsonrpc/method = %q/%q, want 2.0/tools/call", gotBody.JSONRPC, gotBody.Method)
